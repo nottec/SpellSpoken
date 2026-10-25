@@ -97,16 +97,113 @@ export function similarityTyped(typed: string, target: string, mode: TokenMode) 
   return Math.max(0, Math.min(1, Math.pow(Math.max(0, sim), 1.3)));
 }
 
-/** Pick the best of several recognizer alternatives. */
-export function bestMatch(alternatives: { transcript: string; confidence: number }[], target: string, mode: TokenMode = "word") {
-  let best = { transcript: "", score: 0, confidence: 0 };
-  for (const alt of alternatives) {
-    const s = similarity(alt.transcript, target, mode);
-    if (s > best.score) best = { transcript: alt.transcript, score: s, confidence: alt.confidence };
+/* ---------- repetition / window tolerant matching ---------- */
+
+export type MatchDetail = {
+  score: number;                           // 0..1
+  matched: string;                         // the part of `said` that matched best (the whole transcript when no window won)
+  leftover: "none" | "repeat" | "other";   // what surrounded the matched window
+};
+
+/** Tokens for window matching: characters of the normalized string (char mode) or words (word mode). */
+function tokensOf(s: string, mode: TokenMode): string[] {
+  const n = normalize(s, mode);
+  if (!n) return [];
+  return mode === "char" ? Array.from(n) : n.split(" ");
+}
+const joinTokens = (t: string[], mode: TokenMode) => (mode === "char" ? t.join("") : t.join(" "));
+
+/** A leftover chunk still reads as the target when every block of the target's length scores at least this ("Bien"). */
+const REPEAT_AT = 0.75;
+/** Extra material around the matched window that is not a repetition costs this much. */
+const OTHER_MATERIAL = 0.9;
+
+/** True when `chunk` is empty or splits into whole target-length blocks that each still read as the target. */
+function isRepetition(chunk: string[], k: number, target: string, mode: TokenMode) {
+  if (!chunk.length) return true;
+  if (chunk.length % k !== 0) return false;
+  for (let i = 0; i < chunk.length; i += k) {
+    if (similarity(joinTokens(chunk.slice(i, i + k), mode), target, mode) < REPEAT_AT) return false;
   }
-  // The recognizer's own confidence trims a mumbled-but-lucky match a little (max −8%).
-  if (best.confidence > 0) best.score *= 0.92 + 0.08 * Math.min(1, best.confidence);
+  return true;
+}
+
+/**
+ * Repetition- and window-tolerant match: the best of the plain `similarity` and the best sliding
+ * window of the target's token length over the heard tokens. The recognizer often keeps the mic
+ * open until a short word is said twice ("心心" for 心, "hola hola" for hola); such leftovers are
+ * free when they are themselves repetitions of the target, and other surrounding material
+ * ("un el gato negro" for "el gato") costs ×0.9. Windows are re-read on their own, so pinyin
+ * context (tone sandhi, 了) matches how the target itself is read.
+ */
+export function matchDetail(said: string, target: string, mode: TokenMode = "word"): MatchDetail {
+  const plain = similarity(said, target, mode);
+  const heard = tokensOf(said, mode), want = tokensOf(target, mode);
+  const k = want.length;
+  let best: MatchDetail = { score: plain, matched: said.trim(), leftover: "none" };
+  if (!k || heard.length <= k) return best;
+  for (let i = 0; i + k <= heard.length; i++) {
+    const windowText = joinTokens(heard.slice(i, i + k), mode);
+    const s = similarity(windowText, target, mode);
+    if (s <= 0) continue;
+    const repeat = isRepetition(heard.slice(0, i), k, target, mode) && isRepetition(heard.slice(i + k), k, target, mode);
+    const score = repeat ? s : s * OTHER_MATERIAL;
+    if (score > best.score) best = { score, matched: windowText, leftover: repeat ? "repeat" : "other" };
+  }
   return best;
+}
+
+/** 0..1: `matchDetail(...).score`. Use this, not `similarity`, for anything a recognizer produced. */
+export function matchScore(said: string, target: string, mode: TokenMode = "word") {
+  return matchDetail(said, target, mode).score;
+}
+
+/* ---------- picking among recognizer alternatives ---------- */
+
+/** A recognizer alternative. `early` marks the interim snapshot that early-accept stopped on (lib/speech.ts). */
+export type Alternative = { transcript: string; confidence: number; early?: boolean };
+export type Match = {
+  transcript: string;   // the chosen alternative, whole ("心心" even when only one 心 matched)
+  score: number;        // 0..1 after rank and confidence factors
+  confidence: number;   // the chosen alternative's recognizer confidence (0 = unknown / interim)
+  rank: number;         // 0 = the recognizer's top guess (or the early snapshot)
+  matched: string;      // the window of the transcript that matched (for display)
+};
+
+/**
+ * Rank factor by the alternative's position in the recognizer's list. The target being only the
+ * recognizer's third guess means the audio sounded more like two other things first.
+ */
+const RANK_FACTOR = [1, 0.9, 0.82, 0.78];
+/** Chrome reports confidence on final results only; interims and non-top alternatives carry 0 = unknown → no factor. */
+const confidenceFactor = (c: number) => (c > 0 ? 0.75 + 0.25 * Math.min(1, c) : 1);
+
+/**
+ * Pick the best of several recognizer alternatives. Each is scored with `matchDetail`, then
+ * multiplied by its rank factor (1 / 0.9 / 0.82 / 0.78 for the 1st / 2nd / 3rd / later guess;
+ * an early-accept snapshot counts as rank 0) and, when the recognizer gave a confidence, by
+ * 0.75 + 0.25 × confidence.
+ *
+ * Resulting bands for a perfect transcript (grade: Perfecto ≥ 0.9, Bien ≥ 0.75, backfire < 0.45):
+ *   top guess, confidence ≥ 0.6 (or unknown)  → ≥ 0.90  Perfecto
+ *   top guess, confidence 0.5 / 0.3 / 0.1     → 0.875 / 0.825 / 0.775  Bien
+ *   2nd guess, confidence unknown             → 0.90   Perfecto floor; with confidence 0.8 → 0.855 Bien
+ *   3rd guess                                 → ≤ 0.82 Bien (never Perfecto)
+ *   4th+ guess                                → ≤ 0.78 Bien
+ * The confidence factor alone never backfires a perfect transcript (minimum 0.75); it only takes
+ * the shine off a word the recognizer had to guess at. The rank factor can push a lucky 3rd/4th
+ * guess that only half-matched (0.55) onto the backfire line (0.45 / 0.43).
+ */
+export function bestMatch(alternatives: Alternative[], target: string, mode: TokenMode = "word"): Match {
+  let best: Match | null = null;
+  let listed = 0;
+  for (const alt of alternatives) {
+    const rank = alt.early ? 0 : listed++;
+    const d = matchDetail(alt.transcript, target, mode);
+    const s = Math.min(1, d.score * RANK_FACTOR[Math.min(rank, RANK_FACTOR.length - 1)] * confidenceFactor(alt.confidence));
+    if (!best || s > best.score) best = { transcript: alt.transcript, score: s, confidence: alt.confidence, rank, matched: d.matched };
+  }
+  return best ?? { transcript: "", score: 0, confidence: 0, rank: 0, matched: "" };
 }
 
 export const BACKFIRE_BELOW = 0.45;
@@ -123,19 +220,23 @@ export function grade(score: number, lang = "es"): { label: string; color: strin
   return { label: g[3], color: "text-blood" };
 }
 
-/** A hint based on which target words were missed. */
+/**
+ * A hint based on which target words (syllables in char mode) were missed. Looks at the window
+ * of the transcript that `matchDetail` matched, so a repeated word ("心心" for 心) misses nothing.
+ */
 export function missedWords(said: string, target: string, mode: TokenMode = "word") {
+  const heardText = matchDetail(said, target, mode).matched || said;
   if (mode === "char") {
     // Read the target as one string so context readings (了 → le, 不/一 sandhi) match what
     // `syllables()` produced for the transcript; a lone character would read differently.
     const t = normalize(target, "char");
-    const heard = new Set(syllables(normalize(said, "char")).map((x) => x.slice(0, -1)));
+    const heard = new Set(syllables(normalize(heardText, "char")).map((x) => x.slice(0, -1)));
     const chars = [...t], syl = syllables(t);
     return chars.filter((c, i) => {
       const s = syl.length === chars.length ? syl[i] : syllables(c)[0];
       return !!s && !heard.has(s.slice(0, -1));
     });
   }
-  const sw = new Set(normalize(said).split(" "));
+  const sw = new Set(normalize(heardText).split(" "));
   return normalize(target).split(" ").filter((w) => !sw.has(w));
 }

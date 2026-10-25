@@ -19,6 +19,8 @@ export type IncantationProps = {
   words: WordStats;
   listening: boolean;
   level: number;
+  /** Live interim transcript while listening (useSpeechCapture().heard); "" when nothing yet. */
+  heard: string;
   busy: boolean;
   /** Why the selected card cannot be cast right now (castBlocker), or null. */
   blocker: string | null;
@@ -40,7 +42,7 @@ const Key = ({ k }: { k: string }) => <kbd className="rounded border border-whit
 
 /** The hero: the phrase to say, its reading and meaning, the Cast / Stop / Hear it / Redraw controls, resonance and chain. */
 export default function Incantation(p: IncantationProps) {
-  const { run, lang, card, spell, phrase, words, listening, level, busy, blocker, useTyping, typed, notice } = p;
+  const { run, lang, card, spell, phrase, words, listening, level, heard, busy, blocker, useTyping, typed, notice } = p;
   const L = LANGS[lang];
   const at = resonanceAt(run);
   const preview = spell ? previewCast(run, spell) : null;
@@ -64,6 +66,11 @@ export default function Incantation(p: IncantationProps) {
           </h1>
           {phrase.reading && <p className="mt-1 font-display text-xl text-ember/90">{phrase.reading}</p>}
           <p className="mt-2 text-sm text-vellum2">“{phrase.en}”{phrase.focus ? ` · watch the ${phrase.focus}` : ""}</p>
+          {listening && !useTyping && (
+            <p className="mt-2 min-h-5 text-sm text-ember/80" role="status" aria-live="polite">
+              {heard ? <>hearing: <span lang={L.speech} className={`text-ember ${L.italic ? "italic" : ""}`}>{heard}</span> …</> : "listening…"}
+            </p>
+          )}
 
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
             {useTyping ? (

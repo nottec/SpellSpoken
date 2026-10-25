@@ -38,7 +38,11 @@ export async function POST(req: Request) {
   if (!isGeminiLive()) return NextResponse.json<Reply>({ tip: fallback, mode: "template", why: "nokey" });
 
   const hasAudio = Boolean(audio?.b64 && audio?.mime);
-  const prompt = `You are a friendly ${L.english} pronunciation coach inside a game. The learner tried to say: "${target}"${reading ? ` (${L.readingName ?? "reading"}: ${reading})` : ""}. The speech recognizer heard: "${transcript || "(nothing)"}" (similarity ${Math.round(score * 100)}%).${focus ? ` This phrase trains: ${focus}.` : ""} Things that matter in ${L.english}: ${L.coachHint}.
+  // Coaching only: the score above is already final and Gemini's answer never changes it.
+  const habits = L.id === "zh"
+    ? " Learners often carry English habits: a flat or English-like tone contour, a stressed syllable instead of a tone, an English r for zh/ch/sh/r, or ü said as oo. If you hear one, name that syllable with its tone number and the shape the pitch should trace."
+    : " Learners often read Spanish as if it were English: gliding or reduced vowels (\"ay\" for e, \"oh\" for o, a schwa in unstressed syllables), an English r or dark l, a pronounced h, or aspirated p/t/k. If the audio sounds like English pronunciation of Spanish, say so plainly and name the one vowel or consonant to fix.";
+  const prompt = `You are a friendly ${L.english} pronunciation coach inside a game. The learner tried to say: "${target}"${reading ? ` (${L.readingName ?? "reading"}: ${reading})` : ""}. The speech recognizer heard: "${transcript || "(nothing)"}" (similarity ${Math.round(score * 100)}%).${focus ? ` This phrase trains: ${focus}.` : ""} Things that matter in ${L.english}: ${L.coachHint}.${habits}
 ${hasAudio ? "Listen to the audio." : "No audio is available; judge from the transcript."} In ONE sentence (max 20 words), name the single most important sound to fix and how${L.hasReading ? " (name tones by number when relevant)" : ""}, or praise one specific thing they did right if it was good. No preamble.`;
 
   const parts: GeminiPart[] = [{ text: prompt }];

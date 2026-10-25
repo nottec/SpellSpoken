@@ -10,6 +10,12 @@
  * flow: capture speech (or read the typed text) → score → castCard → commit via onRun → ask
  * /api/feedback for one coaching line. Silence and timeouts are not casts. A `busy` flag keeps
  * casts and end-turns from overlapping, and the auto end-turn only ever acts on the latest run.
+ *
+ * Capture tuning (docs/SPEECH_GEMINI.md §1): listening ends early as soon as an interim result
+ * already matches the phrase (ACCEPT_AT), or IDLE_BY_LEVEL after the player falls silent, so a
+ * one-syllable word is never left hanging until it is said twice; the live transcript is shown
+ * under the phrase while listening. Scoring is `bestMatch` (repetition-tolerant, rank- and
+ * confidence-weighted) and is decided before any Gemini call.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { castCard, endTurn, useRedraw, drawPhrase, castBlocker, canAct, handCards, cardName, type Run, type Card, type Spell, type Element, type Enemy } from "@/lib/engine";
@@ -53,6 +59,19 @@ export type BattleProps = {
 
 /** Budget to *start* speaking, by the drawn phrase's level (docs/SPEECH_GEMINI.md §1). */
 const TIMEOUT_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 6000, 2: 8000, 3: 11000 };
+/**
+ * Once speech began, stop listening this long after the recognizer's last update (§1). A word
+ * is over in a beat; a sentence may hold a breath between clauses, so it gets more. Chrome's own
+ * endpointer usually finalises sooner; this is the backstop for when it does not (one-syllable
+ * Mandarin words, or a word it cannot snap to anything).
+ */
+const IDLE_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 1300, 2: 1800, 3: 2300 };
+/**
+ * Early accept: stop as soon as an interim result already scores this well against the phrase
+ * (rank 0, no confidence yet). It is the Perfecto floor, so only a clean reading ends the capture
+ * early; anything less waits for the recognizer's final result and its confidence.
+ */
+const ACCEPT_AT = 0.9;
 /** At or above this the cast was clean: template praise, no feedback request (saves quota). */
 const PRAISE_AT = 0.97;
 const TYPED_MS = 1500;
@@ -255,20 +274,27 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
         return;
       }
       setNotice(null); setVerdict(null);
-      const cap = await mic.start(L.speech, { timeoutMs: TIMEOUT_BY_LEVEL[phrase.level] ?? TIMEOUT_BY_LEVEL[2] });
-      if (!mounted.current) return;
+      const target = phrase;   // the phrase this capture is scored against, even if the hand re-renders meanwhile
+      const cap = await mic.start(L.speech, {
+        timeoutMs: TIMEOUT_BY_LEVEL[target.level] ?? TIMEOUT_BY_LEVEL[2],
+        idleMs: IDLE_BY_LEVEL[target.level] ?? IDLE_BY_LEVEL[2],
+        accept: (alts) => bestMatch(alts, target.text, L.tokens).score >= ACCEPT_AT,
+      });
+      if (!mounted.current) return;   // the screen is gone: the hook already released the mic; nothing to score
       switch (cap.reason) {
+        // Not casts: no breath, no damage, no grudge. The card stays selected for another try.
         case "silence": setNotice({ text: "I didn't hear anything — try again." }); return;
         case "timeout": setNotice({ text: "I heard you start but couldn't make it out — try again." }); return;
         case "error": setNotice({ text: cap.error ?? "The microphone failed. Try again, or type the incantation.", offerTyping: true }); return;
         case "unsupported": onUseTyping(true); setNotice({ text: cap.error ?? "This browser can't hear you. Typing mode is on." }); return;
+        // Casts: "result" (final, early accept or idle stop) and "stopped" (the Stop button / Space) both score what was heard.
         case "result":
         case "stopped": {
-          if (!cap.alts.length) { setNotice({ text: "I didn't hear anything — try again." }); return; }
-          const best = bestMatch(cap.alts, phrase.text, L.tokens);
+          const best = bestMatch(cap.alts, target.text, L.tokens);
+          if (!cap.alts.length || !best.transcript.trim()) { setNotice({ text: "I didn't hear anything — try again." }); return; }
           const latest = runRef.current;   // nothing can have changed while busy, but never cast on a stale run
           if (latest.phase !== "battle" || castBlocker(latest, sel.card.uid)) return;
-          await resolveCast(latest, sel, phrase, best.transcript, best.score, cap.ms, cap.audio, false, seq);
+          await resolveCast(latest, sel, target, best.transcript, best.score, cap.ms, cap.audio, false, seq);
           return;
         }
       }
@@ -353,7 +379,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
 
       <Incantation
         run={run} lang={lang} card={sel?.card ?? null} spell={sel?.spell ?? null} phrase={phrase} words={words}
-        listening={mic.listening} level={mic.level} busy={busy} blocker={blocker}
+        listening={mic.listening} level={mic.level} heard={mic.heard} busy={busy} blocker={blocker}
         useTyping={useTyping} onUseTyping={onUseTyping} typed={typed} onTyped={setTyped}
         onCast={() => void cast()} onStop={mic.stop} onHear={hear} onRedraw={redraw}
         notice={notice} host={selfFx.host} layer={selfFx.layer}

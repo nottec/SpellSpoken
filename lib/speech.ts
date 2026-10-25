@@ -6,18 +6,55 @@
  *
  * `captureCast(lang, opts)` listens once and resolves with what was heard, *why* listening
  * ended, how long it took, and the recorded clip. It never throws speech away: `stop()` and
- * both timeouts call `recognition.stop()` and wait up to GRACE_MS for the recognizer's final
+ * every timer call `recognition.stop()` and wait up to GRACE_MS for the recognizer's final
  * result instead of resolving empty. Every exit path (result, silence, timeout, stop, error,
  * exception) releases the mic tracks and the AudioContext before the promise resolves, and
  * the promise resolves exactly once.
  *
+ * Four things can end listening once speech began, in this order of preference:
+ *   early  — `opts.accept(interimAlts)` returned true for an interim result: the player has
+ *            already said the phrase. We stop at once, keep that interim as a snapshot and wait
+ *            for the final (it carries confidence). Without this, Chrome's zh-CN endpointer can
+ *            sit on a one-syllable word (心) until the player says it again and the final
+ *            becomes "心心".
+ *   idle   — no new recognizer event for `opts.idleMs` after speech began: the player fell
+ *            silent and the recognizer did not finalise by itself (slow endpointing, or a word
+ *            it could not snap to anything).
+ *   user   — `stop()` from the UI.
+ *   hard   — `maxMs` elapsed.
+ * Before speech begins only the soft budget `timeoutMs` runs (→ "silence").
+ *
+ * The resolved `alts` are the recognizer's finals first (confidence > 0 on the top one), else
+ * its last interim, then — when early accept fired — the accepted snapshot marked `early` (see
+ * `mergeAlts`). `reason` stays "result" for early/idle stops; `early` says which path it was.
+ *
  * `recognize()` and `recordDuring()` remain as compatibility wrappers for the old battle screen.
  */
 
-export type Alt = { transcript: string; confidence: number };
+/** A recognizer alternative; `early` marks the interim snapshot early accept stopped on (rank 0 in bestMatch). */
+export type Alt = { transcript: string; confidence: number; early?: boolean };
 export type CaptureReason = "result" | "silence" | "timeout" | "stopped" | "error" | "unsupported";
-export type Capture = { alts: Alt[]; ms: number; reason: CaptureReason; error?: string; audio: { b64: string; mime: string } | null };
-export type CaptureOpts = { timeoutMs?: number; maxMs?: number; onLevel?: (v: number) => void };
+export type Capture = {
+  alts: Alt[];
+  ms: number;                 // start → the accepted interim (early) or the final result
+  reason: CaptureReason;
+  early: boolean;             // listening ended because `accept` matched an interim result
+  error?: string;
+  audio: { b64: string; mime: string } | null;
+};
+export type CaptureOpts = {
+  /** Budget to *start* speaking (default 7 s). Silence until then resolves "silence". */
+  timeoutMs?: number;
+  /** Hard cap on the whole capture (default timeoutMs + 6 s). */
+  maxMs?: number;
+  /** Once speech began: stop this long after the last recognizer event (default 2.6 s; min 300 ms). */
+  idleMs?: number;
+  /** Called with each interim result; return true to stop now and keep that interim as the accepted snapshot. */
+  accept?: (alts: Alt[]) => boolean;
+  onLevel?: (v: number) => void;
+  /** Live transcript while listening (interim results, top alternative). */
+  onInterim?: (text: string) => void;
+};
 export type CaptureHandle = { result: Promise<Capture>; stop(): void };
 
 /** Budget to *start* speaking. Once speech is detected, listening may run on until maxMs. */
@@ -26,6 +63,33 @@ export const DEFAULT_TIMEOUT_MS = 7000;
 export const EXTRA_MAX_MS = 6000;
 /** After recognition.stop(), how long to wait for the final result before settling with what we have. */
 export const GRACE_MS = 2500;
+/**
+ * Default post-speech idle stop. Longer than the battle's level-3 value (2300 ms) so a caller that
+ * does not pass `idleMs` (event trials) still closes the mic a beat after a sentence ends, without
+ * ever cutting one at a pause: Chrome's own endpointer gives up on a non-continuous utterance well
+ * before this anyway.
+ */
+export const DEFAULT_IDLE_MS = 2600;
+
+/**
+ * The alternatives a capture resolves with (pure; checked in lib/scoring.check.ts).
+ * Finals first — they carry confidence — else the last interim; then the early-accept snapshot,
+ * marked `early`, unless the top listed alternative already says the same thing. When the top
+ * alternative merely grew out of the snapshot because the player kept talking after the stop
+ * ("心" → "心心", "gato" → "gatos"), the snapshot inherits its confidence, so early accept never
+ * bypasses the confidence factor in `bestMatch`; when the final disagrees outright, the snapshot
+ * keeps confidence 0 (unknown) and competes on rank 0.
+ */
+export function mergeAlts(finals: Alt[], interim: Alt[], accepted: Alt | null): Alt[] {
+  const listed = (finals.length ? finals : interim).filter((a) => a.transcript.trim());
+  if (!accepted || !accepted.transcript.trim()) return listed;
+  const key = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+  const snap = key(accepted.transcript);
+  const top = listed[0];
+  if (top && key(top.transcript) === snap) return listed;
+  const confidence = top && top.confidence > 0 && key(top.transcript).startsWith(snap) ? top.confidence : 0;
+  return [...listed, { transcript: accepted.transcript.trim(), confidence, early: true }];
+}
 
 const UNSUPPORTED_TEXT = "This browser can't hear you. Open Chrome, or type the incantation.";
 const ERROR_TEXT: Record<string, string> = {
@@ -182,42 +246,50 @@ function toBase64(blob: Blob): Promise<string> {
 
 /* ---------- the capture state machine ---------- */
 
+type StopCause = "user" | "soft" | "hard" | "early" | "idle";
+
 function capture(lang: string, opts: CaptureOpts, wantAudio: boolean): CaptureHandle {
   const timeoutMs = Math.max(500, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const maxMs = Math.max(timeoutMs, opts.maxMs ?? timeoutMs + EXTRA_MAX_MS);
+  const idleMs = Math.max(300, opts.idleMs ?? DEFAULT_IDLE_MS);
   let stopFn: () => void = () => {};
 
   const result = new Promise<Capture>((resolve) => {
+    const unsupported = (): Capture => ({ alts: [], ms: 0, reason: "unsupported", early: false, error: UNSUPPORTED_TEXT, audio: null });
     const Ctor = recognitionCtor();
-    if (!Ctor) { resolve({ alts: [], ms: 0, reason: "unsupported", error: UNSUPPORTED_TEXT, audio: null }); return; }
+    if (!Ctor) { resolve(unsupported()); return; }
     let rec: SR;
-    try { rec = new Ctor(); } catch { resolve({ alts: [], ms: 0, reason: "unsupported", error: UNSUPPORTED_TEXT, audio: null }); return; }
+    try { rec = new Ctor(); } catch { resolve(unsupported()); return; }
 
     const media = wantAudio || opts.onLevel ? openMedia(wantAudio, opts.onLevel) : null;
 
-    let done = false;          // promise settled (or settling)
-    let ended = false;         // recognizer fired onend
-    let stopping = false;      // recognition.stop() requested, waiting for the final result
-    let userStopped = false;   // stop() came from the UI
-    let hardCapHit = false;    // maxMs elapsed
+    let done = false;                       // promise settled (or settling)
+    let ended = false;                      // recognizer fired onend
+    let stopping = false;                   // recognition.stop() requested, waiting for the final result
+    let stopCause: StopCause | null = null; // who asked for the stop
     let speechStarted = false;
     let finalAlts: Alt[] = [];
     let interimAlts: Alt[] = [];
+    let accepted: Alt | null = null;        // the interim snapshot `accept` said yes to
     let t0 = 0;
     let resultAt: number | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
     const timers = new Set<ReturnType<typeof setTimeout>>();
-    const after = (ms: number, fn: () => void) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
+    const after = (ms: number, fn: () => void) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); return id; };
+    const cancel = (id: ReturnType<typeof setTimeout> | null) => { if (id !== null) { clearTimeout(id); timers.delete(id); } };
 
+    /** The one exit. Clears every timer, detaches the recognizer, releases the mic, resolves once. */
     const finish = (reason: CaptureReason, error?: string) => {
       if (done) return;
       done = true;
       for (const id of timers) clearTimeout(id);
       timers.clear();
+      idleTimer = null;
       rec.onstart = null; rec.onresult = null; rec.onnomatch = null; rec.onerror = null; rec.onend = null; rec.onspeechstart = null;
       if (!ended) { try { rec.abort(); } catch { /* already stopped */ } }
-      const alts = (finalAlts.length ? finalAlts : interimAlts).filter((a) => a.transcript.trim());
+      const alts = mergeAlts(finalAlts, interimAlts, accepted);
       const ms = t0 ? Math.max(0, Math.round((resultAt ?? performance.now()) - t0)) : 0;
-      const base = { alts, ms, reason, ...(error ? { error } : {}) };
+      const base = { alts, ms, reason, early: accepted !== null, ...(error ? { error } : {}) };
       (media ? media.close() : Promise.resolve(null)).then(
         (audio) => resolve({ ...base, audio }),
         () => resolve({ ...base, audio: null }),
@@ -226,43 +298,68 @@ function capture(lang: string, opts: CaptureOpts, wantAudio: boolean): CaptureHa
 
     /** Decide the reason from what we have. Heard speech always wins; only then do we classify the failure. */
     const settle = (errorCode?: string) => {
-      const heard = (finalAlts.length ? finalAlts : interimAlts).some((a) => a.transcript.trim());
-      if (heard) return finish(userStopped ? "stopped" : "result");
+      const heard = accepted !== null || (finalAlts.length ? finalAlts : interimAlts).some((a) => a.transcript.trim());
+      if (heard) return finish(stopCause === "user" ? "stopped" : "result");
       if (errorCode && errorCode !== "no-speech" && errorCode !== "aborted") return finish("error", errorText(errorCode));
-      if (hardCapHit && speechStarted) return finish("timeout");
+      // speech was detected but never became words: the hard cap, or idle after a false start
+      if ((stopCause === "hard" || stopCause === "idle") && speechStarted) return finish("timeout");
       return finish("silence");
     };
 
-    const requestStop = (why: "user" | "soft" | "hard") => {
+    /** Ask the recognizer to finalise; the first cause wins and later ones are ignored. */
+    const requestStop = (why: StopCause) => {
       if (done || stopping) return;
       stopping = true;
-      if (why === "user") userStopped = true;
-      if (why === "hard") hardCapHit = true;
+      stopCause = why;
+      cancel(idleTimer); idleTimer = null;
       try { rec.stop(); } catch { settle(); return; }
       after(GRACE_MS, () => settle()); // the final result usually lands well inside this
     };
     stopFn = () => requestStop("user");
 
+    /** (Re)arm the post-speech idle stop: fires only if no further recognizer event arrives. */
+    const armIdle = () => {
+      if (done || stopping) return;
+      cancel(idleTimer);
+      idleTimer = after(idleMs, () => { idleTimer = null; if (!done && !stopping) requestStop("idle"); });
+    };
+
     rec.lang = lang;
-    rec.interimResults = true;   // so we know speech has begun and never lose in-flight words
+    rec.interimResults = true;   // so we know speech has begun, can show it, and never lose in-flight words
     rec.maxAlternatives = 5;
     rec.continuous = false;
 
     const onResults = (e: SRResultEvent) => {
       if (done) return;
-      try {
-        const { finals, interim } = collectAlts(e.results);
-        if (finals.length) { finalAlts = finals; resultAt = performance.now(); settle(); }
-        else if (interim.length) interimAlts = interim;
-      } catch { settle(); } // a malformed event must never leave the promise hanging
+      let finals: Alt[] = [], interim: Alt[] = [];
+      try { ({ finals, interim } = collectAlts(e.results)); }
+      catch { settle(); return; } // a malformed event must never leave the promise hanging
+      if (finals.length) {
+        finalAlts = finals;
+        if (resultAt === null) resultAt = performance.now();   // an early accept already fixed the time
+        settle();
+        return;
+      }
+      if (!interim.length) return;
+      interimAlts = interim;
+      try { opts.onInterim?.(interim[0].transcript); } catch { /* display only */ }
+      if (stopping) return;        // already waiting for the final: the display updates, nothing else changes
+      armIdle();
+      let ok = false;
+      try { ok = !!opts.accept?.(interim); } catch { ok = false; } // a throwing predicate must not break the capture
+      if (ok) {
+        accepted = { ...interim[0] };
+        resultAt = performance.now();
+        requestStop("early");
+      }
     };
-    rec.onspeechstart = () => { speechStarted = true; };
+    rec.onspeechstart = () => { speechStarted = true; armIdle(); };
     rec.onresult = (e) => { speechStarted = true; onResults(e); };
     rec.onnomatch = onResults;
     rec.onerror = (e) => { if (!done) settle(e?.error || "unknown"); };
     rec.onend = () => { ended = true; if (!done) settle(); };
 
-    // Budget to start speaking; once speech is detected the hard cap takes over.
+    // Budget to start speaking; once speech is detected the idle stop and the hard cap take over.
     after(timeoutMs, () => { if (!done && !stopping && !speechStarted) requestStop("soft"); });
     after(maxMs, () => { if (!done && !stopping) requestStop("hard"); });
 
@@ -275,9 +372,10 @@ function capture(lang: string, opts: CaptureOpts, wantAudio: boolean): CaptureHa
 
 /**
  * Listen for one incantation. `timeoutMs` is the budget to start speaking (default 7 s); once
- * speech is detected, listening continues up to `maxMs` (default timeoutMs + 6 s). `onLevel`
- * gets an RMS level 0..1 about 30×/s for a meter. `stop()` ends listening now and still
- * returns what was heard.
+ * speech is detected, listening continues until `accept` matches an interim result (early stop),
+ * `idleMs` passes without a new recognizer event (default 2.6 s), `stop()` is called, or `maxMs`
+ * (default timeoutMs + 6 s) elapses. `onInterim` gets the live transcript, `onLevel` an RMS level
+ * 0..1 about 30×/s for a meter. Every stop still returns what was heard.
  */
 export function captureCast(lang: string, opts: CaptureOpts = {}): CaptureHandle {
   return capture(lang, opts, true);
