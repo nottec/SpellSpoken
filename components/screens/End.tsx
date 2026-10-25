@@ -7,6 +7,7 @@ import { LANGS, type LangId } from "@/lib/lang";
 import { isWordMastered, wordAvg, type WordStats } from "@/lib/lexicon";
 import { enemyById, enemyName } from "@/data/enemies";
 import type { Vocab } from "@/data/vocab";
+import { withPinyin } from "@/components/fx";
 
 export type EndProps = { run: Run; lang: LangId; words: WordStats; lexicon: Vocab[]; onAgain: () => void };
 
@@ -37,7 +38,7 @@ export default function End({ run, lang, words, lexicon, onAgain }: EndProps) {
   return (
     <div className="flex min-h-[80vh] flex-col items-center justify-center text-center animate-reveal">
       <p className="text-sm text-vellum2">{won ? "The last word was yours." : `Floor ${floors} kept you.`}</p>
-      <h1 className={`mt-2 text-balance font-display text-5xl font-light text-vellum md:text-6xl ${won && !L.italic ? "" : "italic"}`}>{headline}</h1>
+      <h1 className={`mt-2 text-balance font-display text-5xl font-light text-vellum md:text-6xl ${won && !L.italic ? "" : "italic"}`}>{withPinyin(headline, lang)}</h1>
 
       <div className="mt-10 flex max-w-2xl flex-wrap justify-center gap-x-8 gap-y-5">
         {stats.map(([k, v]) => (

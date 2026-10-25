@@ -9,6 +9,14 @@ export type SpellKind = "attack" | "shield" | "heal" | "drain" | "hex" | "empowe
 export type EnemyKind = "minion" | "elite" | "boss" | "final";
 export type NodeKind = "fight" | "elite" | "rest" | "event" | "merchant" | "boss" | "final";
 export type StatusId = "burn" | "chill" | "stagger" | "weak" | "exposed" | "armor" | "focus" | "silence" | "strength" | "regen";
+/** Mirrors lib/lang.ts LangId / data/enemies.ts Intent (declared here so fx stays free of lib/engine and data/*). */
+export type LangId = "es" | "zh";
+export type IntentId = "attack" | "double" | "charge" | "curse" | "silence" | "heal" | "block";
+export type ReactionId = "wildfire" | "steam" | "storm" | "eclipse" | "dusk";
+
+/** BCP-47 tags and the "italic display type looks wrong on CJK" rule, mirroring LANGS. */
+export const LANG_TAG: Record<LangId, string> = { es: "es-ES", zh: "zh-CN" };
+export const LANG_ITALIC: Record<LangId, boolean> = { es: true, zh: false };
 
 /** Mirrors tailwind.config.ts so SVG fills and inline styles can use the same palette. */
 export const ELEMENT_HEX: Record<Element, string> = {

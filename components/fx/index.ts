@@ -11,4 +11,5 @@ export { default as DoorCard, DOOR_META, type DoorCardProps } from "./DoorCard";
 export { default as PathStrip, type PathStripProps } from "./PathStrip";
 export { default as InkCounter, type InkCounterProps } from "./InkCounter";
 export { default as LogPanel, type LogPanelProps } from "./LogPanel";
-export { ELEMENT_HEX, ELEMENT_LABEL, PALETTE, rgba, type Element, type SpellKind, type EnemyKind, type NodeKind, type StatusId } from "./types";
+export { default as Ruby, withPinyin, pinyinOf, hasHan, type RubyProps } from "./Ruby";
+export { ELEMENT_HEX, ELEMENT_LABEL, PALETTE, LANG_TAG, LANG_ITALIC, rgba, type Element, type SpellKind, type EnemyKind, type NodeKind, type StatusId, type LangId, type IntentId, type ReactionId } from "./types";

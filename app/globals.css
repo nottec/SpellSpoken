@@ -125,6 +125,15 @@ main { position: relative; z-index: 1; }
 
   /* DoorCard danger glow */
   .fx-danger { animation: fxGlow 2.6s ease-in-out infinite; }
+
+  /* Ruby (pinyin over Chinese). Chinese is never italic; the reading is small, muted and upright. */
+  .fx-zh, .fx-ruby { font-style: normal; }
+  .fx-ruby { ruby-position: over; ruby-align: center; }
+  .fx-ruby rt {
+    font-family: Manrope, system-ui, sans-serif; font-style: normal; font-weight: 500; text-transform: none;
+    font-size: max(.5em, 9px); line-height: 1; letter-spacing: .01em; padding-bottom: .08em;
+    color: rgba(185, 173, 153, .92); text-shadow: none;
+  }
 }
 
 /* with reduced motion the global rule above cuts every animation to one instant frame;

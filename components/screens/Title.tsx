@@ -6,6 +6,7 @@ import { FLOORS } from "@/lib/engine";
 import { LANGS, type LangId } from "@/lib/lang";
 import { isWordMastered, type WordStats } from "@/lib/lexicon";
 import type { Vocab } from "@/data/vocab";
+import { Ruby } from "@/components/fx";
 
 export type TitleProps = {
   lang: LangId;
@@ -48,7 +49,7 @@ export default function Title({ lang, onLang, lexicon, words, saved, onContinue,
             key={l} type="button" role="radio" aria-checked={lang === l} onClick={() => onLang(l)}
             className={`rounded-full px-4 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 ${lang === l ? "bg-vellum text-ink" : "bg-white/5 text-vellum2 hover:bg-white/10"}`}
           >
-            {LANGS[l].label}
+            <Ruby text={LANGS[l].label} lang={l} className="font-display text-base leading-none" />
           </button>
         ))}
       </div>

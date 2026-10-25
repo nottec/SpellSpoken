@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
-import { PALETTE, ELEMENT_HEX, rgba, type NodeKind } from "./types";
+import { withPinyin } from "./Ruby";
+import { PALETTE, ELEMENT_HEX, LANG_TAG, rgba, type LangId, type NodeKind } from "./types";
 
 export type DoorCardProps = {
   kind: NodeKind;
@@ -7,6 +8,8 @@ export type DoorCardProps = {
   subtitle?: string;
   /** Pass LANGS[lang].italic. Defaults to true. */
   italic?: boolean;
+  /** With "zh" the title renders with ruby pinyin (and is never italic). */
+  lang?: LangId;
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
@@ -46,9 +49,10 @@ export const DOOR_META: Record<NodeKind, DoorMeta> = {
 };
 
 /** A tall arch door for the map. Elite, boss and final glow and pulse; the rest sit quietly. */
-export default function DoorCard({ kind, title, subtitle, italic = true, onClick, disabled = false, className = "" }: DoorCardProps) {
+export default function DoorCard({ kind, title, subtitle, italic = true, lang, onClick, disabled = false, className = "" }: DoorCardProps) {
   const m = DOOR_META[kind];
   const c = m.color;
+  const zh = lang === "zh";
   return (
     <button
       type="button" onClick={onClick} disabled={disabled} aria-label={`${m.label}: ${title}${subtitle ? `, ${subtitle}` : ""}`}
@@ -64,7 +68,7 @@ export default function DoorCard({ kind, title, subtitle, italic = true, onClick
         {m.icon}
       </svg>
       <span className="mt-2 text-[10px] uppercase tracking-[.2em]" style={{ color: c }}>{m.label}</span>
-      <span className={`mt-auto px-3 text-balance font-display text-lg leading-tight text-vellum ${italic ? "italic" : ""} ${subtitle ? "mb-1" : "mb-5"}`}>{title}</span>
+      <span lang={lang ? LANG_TAG[lang] : undefined} className={`mt-auto px-3 text-balance font-display text-lg leading-tight text-vellum ${italic && !zh ? "italic" : ""} ${subtitle ? "mb-1" : "mb-5"}`}>{zh ? withPinyin(title, "zh") : title}</span>
       {subtitle && <span className="mb-4 px-3 text-[11px] leading-snug text-vellum2">{subtitle}</span>}
     </button>
   );

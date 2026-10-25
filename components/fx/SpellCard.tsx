@@ -1,7 +1,8 @@
 "use client";
 
 import Sigil from "./Sigil";
-import { ELEMENT_HEX, rgba, type Element, type SpellKind } from "./types";
+import { withPinyin } from "./Ruby";
+import { ELEMENT_HEX, LANG_TAG, rgba, type Element, type LangId, type SpellKind } from "./types";
 
 export type SpellCardProps = {
   name: string;
@@ -18,6 +19,8 @@ export type SpellCardProps = {
   hint?: string;
   /** Pass LANGS[lang].italic — never italicise Chinese. Defaults to true. */
   italic?: boolean;
+  /** With "zh" the name renders with ruby pinyin (and is never italic). */
+  lang?: LangId;
   onClick?: () => void;
   hotkey?: string;
   className?: string;
@@ -40,9 +43,10 @@ function CostGem({ cost }: { cost: number }) {
 }
 
 /** A grimoire card: vellum face on dusk, element sigil, cost gem, tier pips, rules text, hint badge. ~150 px wide. */
-export default function SpellCard({ name, desc, element, kind, tier, cost, power, up = false, selected = false, disabled = false, hint, italic = true, onClick, hotkey, className = "" }: SpellCardProps) {
+export default function SpellCard({ name, desc, element, kind, tier, cost, power, up = false, selected = false, disabled = false, hint, italic = true, lang, onClick, hotkey, className = "" }: SpellCardProps) {
   const el = ELEMENT_HEX[element];
   const tone = hint ? (disabled || BAD_HINT.test(hint) ? "bad" : "good") : null;
+  const zh = lang === "zh";
   return (
     <button
       type="button" onClick={onClick} disabled={disabled} aria-pressed={selected} aria-label={`${name}, ${KIND_LABEL[kind]}, tier ${tier}, ${cost} breath${hint ? `, ${hint}` : ""}`}
@@ -70,7 +74,7 @@ export default function SpellCard({ name, desc, element, kind, tier, cost, power
           {power !== undefined && <span className="mt-1 font-display text-xl leading-none text-vellum">{power}</span>}
         </div>
 
-        <p className={`mt-2 text-balance font-display text-[17px] leading-tight text-vellum ${italic ? "italic" : ""}`}>{name}</p>
+        <p lang={lang ? LANG_TAG[lang] : undefined} className={`mt-2 text-balance font-display text-[17px] leading-tight text-vellum ${italic && !zh ? "italic" : ""}`}>{zh ? withPinyin(name, "zh") : name}</p>
         <p className="mt-0.5 text-[10px] uppercase tracking-[.14em] text-vellum2">{KIND_LABEL[kind]} · <span style={{ color: el }}>{element}</span></p>
         <p className="mt-1.5 line-clamp-3 text-[11px] leading-snug text-vellum2">{desc}</p>
       </div>

@@ -2,7 +2,7 @@
 
 /** A rest site: heal, study (upgrade a card) or forget (remove one). Each choice leaves the room. */
 import { useState } from "react";
-import { DOOR_META } from "@/components/fx";
+import { DOOR_META, Ruby } from "@/components/fx";
 import { rest, REST_HEAL, type Run } from "@/lib/engine";
 import { LANGS, REST_LABEL, localName, type LangId } from "@/lib/lang";
 import RunHeader from "./RunHeader";
@@ -34,7 +34,7 @@ export default function RestScreen({ run, lang, onRun }: RestScreenProps) {
         >
           {DOOR_META.rest.icon}
         </svg>
-        <h2 className={`mt-3 font-display text-4xl font-light text-vellum ${L.italic ? "italic" : ""}`}>{localName(REST_LABEL, lang)}</h2>
+        <h2 className="mt-3 font-display text-4xl font-light text-vellum"><Ruby text={localName(REST_LABEL, lang)} lang={lang} italic={L.italic} /></h2>
         <p className="mt-2 text-sm text-vellum2">A quiet room with a fire.</p>
       </section>
 

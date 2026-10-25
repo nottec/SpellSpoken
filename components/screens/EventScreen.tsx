@@ -8,7 +8,7 @@
  * the Continue button calls `advance` (the engine leaves that to the UI so the text can be read).
  */
 import { useState } from "react";
-import { ListeningRing, VuMeter } from "@/components/fx";
+import { ListeningRing, VuMeter, Ruby, withPinyin } from "@/components/fx";
 import { useSpeechCapture } from "@/components/hooks/useSpeechCapture";
 import { advance, drawPhrase, eventOptionAvailable, pickEventCard, resolveEvent, type Run } from "@/lib/engine";
 import { LANGS, type LangId } from "@/lib/lang";
@@ -65,9 +65,9 @@ function ScoreLine({ result, lang }: { result: TrialResult; lang: LangId }) {
         <span className="absolute inset-0 flex items-center justify-center font-display text-lg text-vellum">{pct}</span>
       </div>
       <div className="min-w-0">
-        <p className={`font-display text-lg ${g.color} ${L.italic ? "italic" : ""}`}>{g.label}.</p>
+        <p className="font-display text-lg"><Ruby text={`${g.label}.`} lang={lang} className={g.color} italic={L.italic} /></p>
         <p className="text-sm text-vellum2">
-          For <span className={`text-vellum ${L.italic ? "italic" : ""}`}>“{result.phrase.text}”</span> it heard “{result.heard || "nothing"}”.
+          For <span lang={L.speech} className={`text-vellum ${L.italic ? "italic" : ""}`}>“{withPinyin(result.phrase.text, lang)}”</span> it heard “{result.heard ? withPinyin(result.heard, lang) : "nothing"}”.
         </p>
       </div>
     </div>
@@ -157,7 +157,7 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
 
       <section className="mt-10 text-center">
         <p className="text-[10px] uppercase tracking-[.2em] text-shadow">event</p>
-        <h2 className={`mt-2 text-balance font-display text-4xl font-light text-vellum ${L.italic ? "italic" : ""}`}>{eventTitle(ev, lang)}</h2>
+        <h2 className="mt-2 text-balance font-display text-4xl font-light text-vellum"><Ruby text={eventTitle(ev, lang)} lang={lang} italic={L.italic} /></h2>
         <p className="mx-auto mt-4 max-w-xl text-balance text-vellum2">{ev.body}</p>
       </section>
 
@@ -173,7 +173,7 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
                 className="panel flex flex-col items-start gap-1 px-5 py-4 text-left transition hover:bg-dusk2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-dusk/80"
               >
                 <span className="flex w-full flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <span className={`font-display text-xl text-vellum ${L.italic ? "italic" : ""}`}>{optLabel(opt, lang)}</span>
+                  <span className="font-display text-xl text-vellum"><Ruby text={optLabel(opt, lang)} lang={lang} italic={L.italic} /></span>
                   {opt.trial && (
                     <span className="rounded-full bg-shadow/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-shadow">
                       trial · level {opt.trial.level}
@@ -193,7 +193,7 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
       {stage === "choose" && trial && trialOpt?.trial && (
         <section className="mx-auto mt-8 max-w-xl text-center">
           <p className="text-xs text-vellum2">
-            <span className={`text-vellum ${L.italic ? "italic" : ""}`}>{optLabel(trialOpt, lang)}</span>
+            <Ruby text={optLabel(trialOpt, lang)} lang={lang} italic={L.italic} className="text-vellum" />
             {" · "}say this {LEVEL_WORD[trial.phrase.level]} at {Math.round(trialOpt.trial.threshold * 100)}% or better
             {run.grudges.includes(trial.phrase.id) && <span className="text-blood"> · a word that beat you</span>}
           </p>
@@ -259,7 +259,7 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
       {stage === "done" && (
         <section className="mx-auto mt-8 max-w-xl text-center">
           {result && <div className="mb-5"><ScoreLine result={result} lang={lang} /></div>}
-          <p className="panel px-6 py-5 font-display text-xl text-vellum">{run.event.outcome ?? "Nothing happens."}</p>
+          <p className="panel px-6 py-5 font-display text-xl text-vellum">{withPinyin(run.event.outcome ?? "Nothing happens.", lang)}</p>
           <button type="button" onClick={() => onRun(advance(run))} className="btn-ember mt-6 px-8 py-3 text-base">Continue</button>
         </section>
       )}

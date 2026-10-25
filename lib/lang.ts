@@ -1,5 +1,8 @@
 /** Everything that differs between target languages lives here. */
-import { ELEMENT_LABEL, type Element } from "@/data/spells";
+import { ELEMENT_LABEL, spells, type Element } from "@/data/spells";
+import { enemies, type Intent } from "@/data/enemies";
+import { relics } from "@/data/relics";
+import { events } from "@/data/events";
 import type { NodeKind } from "./map";
 
 export type LangId = "es" | "zh";
@@ -58,3 +61,48 @@ export const NODE_LABEL: Record<NodeKind, { name: string; zh: string; en: string
 };
 export const nodeLabel = (kind: NodeKind, lang: LangId) => localName(NODE_LABEL[kind], lang);
 export const REST_LABEL = NODE_LABEL.rest;
+
+/** Enemy intents as in-world words (the IntentBadge shows them small under the English line). */
+export const INTENT_NAMES: Record<Intent, { name: string; zh: string }> = {
+  attack:  { name: "Golpe",       zh: "攻击" },
+  double:  { name: "Doble golpe", zh: "连击" },
+  charge:  { name: "Carga",       zh: "蓄力" },
+  curse:   { name: "Maldición",   zh: "诅咒" },
+  silence: { name: "Silencio",    zh: "沉默" },
+  heal:    { name: "Curación",    zh: "治疗" },
+  block:   { name: "Bloqueo",     zh: "格挡" },
+};
+export const intentName = (i: Intent, lang: LangId) => localName(INTENT_NAMES[i], lang);
+
+/* ---------- log localisation ---------- */
+
+type NameDict = { re: RegExp; map: Map<string, string> };
+let nameDict: NameDict | null = null;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Every Spanish in-world name the engine can put in a log line → its Chinese, longest first. Built once. */
+function buildNameDict(): NameDict {
+  const map = new Map<string, string>();
+  const add = (es: string, zh: string) => { if (es && zh && es !== zh && !map.has(es)) map.set(es, zh); };
+  for (const s of spells) { add(`${s.name}+`, `${s.zh}+`); add(s.name, s.zh); }
+  for (const e of enemies) add(e.name, e.zh);
+  for (const x of relics) add(x.name, x.zh);
+  for (const ev of events) { add(ev.title, ev.titleZh); for (const o of ev.options) add(o.label, o.zh); }
+  for (const n of Object.values(NODE_LABEL)) add(n.name, n.zh);
+  for (const el of Object.keys(ELEMENT_LABEL) as Element[]) add(ELEMENT_LABEL[el], ELEMENT_LABELS.zh[el]);
+  const keys = [...map.keys()].sort((a, b) => b.length - a.length);
+  // whole words only (no letter or digit on either side), case-sensitive, longest alternative first so "Chispa+" beats "Chispa"
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])(?:${keys.map(escapeRe).join("|")})(?![\\p{L}\\p{N}])`, "gu");
+  return { re, map };
+}
+
+/**
+ * The pure engine writes `run.log` in English with Spanish in-world names whatever the language.
+ * For "zh" this swaps every known spell (with its "+"), enemy, relic, event, door and element name
+ * for its Chinese; for "es" the line comes back unchanged. Pair with `withPinyin` to show readings.
+ */
+export function localizeLine(line: string, lang: LangId): string {
+  if (lang !== "zh" || !line) return line;
+  const d = nameDict ?? (nameDict = buildNameDict());
+  return line.replace(d.re, (m) => d.map.get(m) ?? m);
+}

@@ -4,6 +4,7 @@ import type { Card, CastResult, Spell } from "@/lib/engine";
 import type { Vocab } from "@/data/vocab";
 import { LANGS, type LangId } from "@/lib/lang";
 import { grade } from "@/lib/scoring";
+import { Ruby, withPinyin } from "@/components/fx";
 import { castSentence, MODE_TAG, WHY_TEXT } from "./copy";
 
 export type CastVerdict = {
@@ -50,14 +51,14 @@ export default function Verdict({ verdict, lang }: { verdict: VerdictState; lang
           <ScoreRing score={c.result.score} backfire={c.result.backfire} />
           <div className="min-w-0 flex-1">
             <p className="font-display text-lg leading-snug">
-              <span lang={L.speech} className={`${g.color} ${L.italic ? "italic" : ""}`}>{g.label}.</span> {castSentence(c.result, c.card, c.spell, lang)}
+              <Ruby text={`${g.label}.`} lang={lang} className={g.color} italic={L.italic} /> {withPinyin(castSentence(c.result, c.card, c.spell, lang), lang)}
             </p>
             <p className="mt-1 text-sm text-vellum2">
-              For <span lang={L.speech} className="text-vellum">“{c.phrase.text}”</span> {c.typed ? "you typed" : "it heard"} <span lang={L.speech} className="text-vellum">“{c.heard || "nothing"}”</span>.
+              For <span lang={L.speech} className="text-vellum">“{withPinyin(c.phrase.text, lang)}”</span> {c.typed ? "you typed" : "it heard"} <span lang={L.speech} className="text-vellum">“{c.heard ? withPinyin(c.heard, lang) : "nothing"}”</span>.
               {c.result.grudge && <span className="text-blood"> This word will return.</span>}
             </p>
             <p className="mt-1 text-sm text-shadow">
-              {c.pending ? <span className="text-vellum2/80">Coach is listening…</span> : c.tip}
+              {c.pending ? <span className="text-vellum2/80">Coach is listening…</span> : c.tip ? withPinyin(c.tip, lang) : null}
               {tag && <span className="ml-1 text-xs text-vellum2/70">{tag}</span>}
               {why && <span className="ml-1 text-xs text-vellum2/70">· {why}</span>}
             </p>
@@ -65,7 +66,7 @@ export default function Verdict({ verdict, lang }: { verdict: VerdictState; lang
         </div>
       )}
       {verdict.enemyTurn && (
-        <p className={`font-display text-base text-vellum ${c ? "mt-3 border-t border-white/5 pt-3" : ""}`}>{verdict.enemyTurn}</p>
+        <p className={`font-display text-base text-vellum ${c ? "mt-3 border-t border-white/5 pt-3" : ""}`}>{withPinyin(verdict.enemyTurn, lang)}</p>
       )}
     </section>
   );
