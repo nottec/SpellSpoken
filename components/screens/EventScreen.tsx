@@ -13,9 +13,10 @@ import { useSpeechCapture } from "@/components/hooks/useSpeechCapture";
 import { advance, drawPhrase, eventOptionAvailable, pickEventCard, resolveEvent, type Run } from "@/lib/engine";
 import { LANGS, type LangId } from "@/lib/lang";
 import type { WordStats } from "@/lib/lexicon";
-import { bestMatch, grade, similarityTyped } from "@/lib/scoring";
+import { bestMatch, grade, similarityTyped, judged } from "@/lib/scoring";
 import { speak, type Capture } from "@/lib/speech";
 import { needsFallback, transcribeClip, withFallback } from "@/lib/transcribe";
+import { judgePronunciation } from "@/lib/judge";
 import { eventById, eventTitle, type EventOption } from "@/data/events";
 import type { Vocab } from "@/data/vocab";
 import RunHeader from "./RunHeader";
@@ -145,7 +146,15 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
       case "result":
       case "stopped": {
         const best = bestMatch(cap.alts, trial.phrase.text, L.tokens);
-        finish(trial, best.score, best.transcript);
+        let score = best.score;
+        if (cap.audio && best.transcript.trim()) {
+          // same accent judge as a cast; without an answer the transcript score stands
+          setNote("Gemini is judging the accent…");
+          const j = await judgePronunciation({ target: trial.phrase.text, reading: trial.phrase.reading, focus: trial.phrase.focus, transcript: best.transcript, score: best.score, audio: cap.audio, lang });
+          setNote(null);
+          score = judged(best.score, j.rating);
+        }
+        finish(trial, score, best.transcript);
       }
     }
   }

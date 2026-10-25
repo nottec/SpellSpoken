@@ -208,12 +208,22 @@ on any failure they answer with template text plus `why`.
 ```jsonc
 // request
 { "target": "下雨了", "reading": "xià yǔ le", "focus": "third tone", "transcript": "下鱼了",
-  "score": 0.61, "audio": { "b64": "...", "mime": "audio/webm" } | null, "lang": "zh" }
+  "score": 0.61, "audio": { "b64": "...", "mime": "audio/webm" } | null, "lang": "zh", "judge"?: true }
 // response
-{ "tip": "…one sentence…", "mode": "gemini" | "gemini-text" | "template", "why"?: GeminiWhy }
+{ "tip": "…one sentence…", "mode": "gemini" | "gemini-text" | "template", "why"?: GeminiWhy, "rating"?: 0–100 | null }
 ```
 
-- `score ≥ 0.97` → template praise, **no Gemini request** (the client may skip the call too).
+- **The accent judge** (`judge: true` with a clip; `lib/judge.ts`): the recognizer is accent-tolerant, so
+  an English-vowel "gato" comes back as "gato" with high confidence and the transcript score cannot see
+  it. With `judge`, Gemini rates the pronunciation of the target 0–100 under a strict rubric (95–100
+  native-like · 80–94 slight accent · 60–79 noticeably foreign · 35–59 an English-style reading:
+  gliding vowels, English r, pronounced h, aspirated p/t/k, or flattened/wrong tones · 0–34 a
+  different word) and writes the tip in the same JSON answer. The screen folds the rating in with the
+  pure `judged(score, rating)` = score × (0.35 + 0.65 × rating/100): 85 keeps Perfecto, 60 → ×0.74,
+  45 → ×0.64 (a grudge), under 16 → a backfire. `rating: null` (no key, timeout, unusable answer)
+  leaves the transcript score. The cast waits for the judge (`JUDGE_TIMEOUT_MS` 9 s) and the verdict
+  shows "accent N/100". The judge always calls Gemini, even above 0.97.
+- Without `judge`: `score ≥ 0.97` → template praise, **no Gemini request** (the client may skip the call too).
 - Pass `cap.audio` straight through; `null` makes a transcript-only request. The clip runs until the
   capture settles, so it includes anything said after an early accept.
 - The prompt asks the coach to call out English reading habits (Spanish: gliding or reduced vowels,

@@ -272,6 +272,23 @@ const GRADES: Record<string, [string, string, string, string]> = {
   es: ["Perfecto", "Bien", "Más o menos", "¡Fallo!"],
   zh: ["完美", "很好", "马马虎虎", "失败！"],
 };
+/* ---------- the accent judge: Gemini's 0–100 rating of the clip, folded in deterministically ---------- */
+
+/** The factor at rating 0. Only a rating under ~16 (a different word, unintelligible) can turn a perfect transcript into a backfire. */
+export const ACCENT_FLOOR = 0.35;
+
+/**
+ * Fold an audio judge's rating (0–100; null when no judge answered) into the transcript score.
+ * The recognizer is accent-tolerant, so a perfect transcript says little about the accent; the
+ * rating scales it: 100 keeps the score, 85 → ×0.90 (still Perfecto), 60 → ×0.74, 45 (an English
+ * reading) → ×0.64 (Más o menos and a grudge), 0 → ×0.35 (a backfire). Pure.
+ */
+export function judged(score: number, rating: number | null | undefined): number {
+  if (rating === null || rating === undefined || !Number.isFinite(rating)) return score;
+  const r = Math.max(0, Math.min(100, rating)) / 100;
+  return Math.max(0, Math.min(1, score * (ACCENT_FLOOR + (1 - ACCENT_FLOOR) * r)));
+}
+
 export function grade(score: number, lang = "es"): { label: string; color: string } {
   const g = GRADES[lang] ?? GRADES.es;
   if (score >= 0.9) return { label: g[0], color: "text-light" };

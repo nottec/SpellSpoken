@@ -74,7 +74,7 @@ lib/speech.ts                    captureCast(): early accept on a matching inter
 lib/sfx.ts                       synthesized sound cues (WebAudio), mute toggle
 lib/gemini.ts                    shared caller: two model lists, timeouts, retries, 429 cooldown, status for /api/health
 lib/sim.ts · lib/engine.check.ts balance simulation (npm run sim) and engine assertions (npm run check)
-app/api/feedback/route.ts        Gemini listens to the clip and gives ONE tip; language-aware template fallback
+app/api/feedback/route.ts        Gemini listens to the clip, rates the accent 0–100 (the pure `judged` folds it into the score) and gives ONE tip; language-aware template fallback
 app/api/transcribe/route.ts      second ear: when Chrome returns nothing for a short word, Gemini transcribes the clip verbatim (never told the target) and the same scorer decides
 app/api/mentor/route.ts          Eco, the Socratic guide (keyless hints are language-aware too)
 app/api/vocab/route.ts           generates and validates new lexicon entries for a theme (lite model first)

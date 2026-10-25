@@ -12,17 +12,22 @@ const PRAISE_AT = 0.97;
 type Body = {
   target: string; reading?: string; focus?: string; transcript?: string; score: number;
   audio?: { b64: string; mime: string } | null; lang?: LangId;
+  /** With an audio clip: rate the accent 0–100 under the strict rubric and return it with the tip (lib/judge.ts). */
+  judge?: boolean;
 };
-type Reply = { tip: string; mode: "gemini" | "gemini-text" | "template"; why?: GeminiWhy };
+type Reply = { tip: string; mode: "gemini" | "gemini-text" | "template"; why?: GeminiWhy; rating?: number | null };
 
 /**
- * Pronunciation feedback. With GEMINI_API_KEY and an audio clip, Gemini listens to the
- * recording and names the one sound to fix. Without it (or when Gemini fails) a template tip is
- * built from the recognizer transcript. The game's damage is already decided before this runs;
- * feedback never changes the score.
+ * Pronunciation feedback, and the accent judge. With GEMINI_API_KEY and an audio clip, Gemini
+ * listens to the recording, names the one sound to fix and, when `judge` is set, rates the
+ * pronunciation of the target 0–100 under a strict rubric (English vowels, an English r, a
+ * pronounced h, flattened or wrong tones all cap the rating). The client folds that rating into
+ * the transcript score with the pure `judged()` in lib/scoring.ts; without a rating (no key,
+ * timeout, unusable answer) the transcript score stands. Without a key, or when Gemini fails, a
+ * template tip is built from the recognizer transcript.
  *
- * POST { target, reading?, focus?, transcript, score, audio?, lang? }
- *  →   { tip, mode: "gemini" | "gemini-text" | "template", why? }
+ * POST { target, reading?, focus?, transcript, score, audio?, lang?, judge? }
+ *  →   { tip, mode: "gemini" | "gemini-text" | "template", why?, rating?: 0–100 | null }
  */
 export async function POST(req: Request) {
   let body: Body;
@@ -33,15 +38,27 @@ export async function POST(req: Request) {
   if (typeof target !== "string" || !target.trim() || !Number.isFinite(score)) return NextResponse.json({ error: "target (string) and score (number) are required" }, { status: 400 });
   const L = LANGS[body.lang ?? "es"] ?? LANGS.es;
 
-  const fallback = template(L, target, reading, focus, transcript, score);
-  if (score >= PRAISE_AT) return NextResponse.json<Reply>({ tip: fallback, mode: "template" });
-  if (!isGeminiLive()) return NextResponse.json<Reply>({ tip: fallback, mode: "template", why: "nokey" });
-
   const hasAudio = Boolean(audio?.b64 && audio?.mime);
-  // Coaching only: the score above is already final and Gemini's answer never changes it.
+  const judge = body.judge === true && hasAudio;
+  const fallback = template(L, target, reading, focus, transcript, score);
+  if (!judge && score >= PRAISE_AT) return NextResponse.json<Reply>({ tip: fallback, mode: "template" });
+  if (!isGeminiLive()) return NextResponse.json<Reply>({ tip: fallback, mode: "template", why: "nokey", rating: null });
+
   const habits = L.id === "zh"
     ? " Learners often carry English habits: a flat or English-like tone contour, a stressed syllable instead of a tone, an English r for zh/ch/sh/r, or ü said as oo. If you hear one, name that syllable with its tone number and the shape the pitch should trace."
     : " Learners often read Spanish as if it were English: gliding or reduced vowels (\"ay\" for e, \"oh\" for o, a schwa in unstressed syllables), an English r or dark l, a pronounced h, or aspirated p/t/k. If the audio sounds like English pronunciation of Spanish, say so plainly and name the one vowel or consonant to fix.";
+
+  if (judge) {
+    const prompt = judgePrompt(L, target, reading, focus, transcript, habits);
+    const parts: GeminiPart[] = [{ text: prompt }, { inline_data: { mime_type: audio!.mime, data: audio!.b64 } }];
+    const r = await callGemini([{ parts }], { temperature: 0.2, maxOutputTokens: 220, responseMimeType: "application/json" });
+    const parsed = parseJudge(r.text);
+    if (parsed) return NextResponse.json<Reply>({ tip: parsed.tip || fallback, mode: "gemini", rating: parsed.rating });
+    if (r.text?.trim()) return NextResponse.json<Reply>({ tip: r.text.trim(), mode: "gemini", rating: null });   // answered, but not as JSON: coaching without a rating
+    return NextResponse.json<Reply>({ tip: fallback, mode: "template", why: r.why ?? "error", rating: null });
+  }
+
+  // Coaching only (typing mode, or no clip): the score is already final.
   const prompt = `You are a friendly ${L.english} pronunciation coach inside a game. The learner tried to say: "${target}"${reading ? ` (${L.readingName ?? "reading"}: ${reading})` : ""}. The speech recognizer heard: "${transcript || "(nothing)"}" (similarity ${Math.round(score * 100)}%).${focus ? ` This phrase trains: ${focus}.` : ""} Things that matter in ${L.english}: ${L.coachHint}.${habits}
 ${hasAudio ? "Listen to the audio." : "No audio is available; judge from the transcript."} In ONE sentence (max 20 words), name the single most important sound to fix and how${L.hasReading ? " (name tones by number when relevant)" : ""}, or praise one specific thing they did right if it was good. No preamble.`;
 
@@ -51,6 +68,34 @@ ${hasAudio ? "Listen to the audio." : "No audio is available; judge from the tra
   const r = await callGemini([{ parts }], { temperature: 0.5, maxOutputTokens: 200 });
   if (r.text) return NextResponse.json<Reply>({ tip: r.text, mode: hasAudio ? "gemini" : "gemini-text" });
   return NextResponse.json<Reply>({ tip: fallback, mode: "template", why: r.why ?? "error" });
+}
+
+/* ---------- the judge ---------- */
+
+function judgePrompt(L: LangConfig, target: string, reading: string | undefined, focus: string | undefined, transcript: string, habits: string): string {
+  const zh = L.id === "zh";
+  return `You are a strict ${L.english} pronunciation examiner inside a game. The learner tried to say: "${target}"${reading ? ` (${L.readingName ?? "reading"}: ${reading})` : ""}.${focus ? ` This phrase trains: ${focus}.` : ""}
+Listen to the audio and rate the pronunciation of exactly that phrase from 0 to 100 as a demanding native teacher would:
+95-100 native-like · 80-94 correct with a slight accent · 60-79 understandable but noticeably foreign (one vowel, consonant${zh ? " or tone" : ""} off) · 35-59 an English-style reading (${zh ? "tones flattened or missing, English stress instead of tone, an English r for r/zh/ch/sh, ü said as oo" : "gliding or reduced vowels, an English r or dark l, a pronounced h, aspirated p/t/k"}) · 0-34 a different word, a missing syllable, or unintelligible.
+${zh ? "Every syllable must carry its tone: any wrong tone caps the rating at 65; flat or missing tones cap it at 50." : "Spanish vowels are short, pure and equal: an English diphthong on any vowel caps the rating at 55; an English r caps it at 60."}
+The speech recognizer's transcript was "${transcript || "(nothing)"}", but it is accent-tolerant: judge only what you hear. Things that matter in ${L.english}: ${L.coachHint}.${habits}
+Reply with JSON only: {"rating": <integer 0-100>, "tip": "<one sentence, at most 20 words: the single most important sound to fix and how${L.hasReading ? ", naming tones by number" : ""}, or specific praise if it was good>"}`;
+}
+
+/** Accepts clean JSON, fenced JSON, or prose that still carries "rating": N. */
+function parseJudge(text: string | null): { rating: number; tip: string } | null {
+  if (!text) return null;
+  const raw = text.replace(/```(?:json)?/gi, "").trim();
+  let rating: unknown, tip: unknown;
+  try { const j = JSON.parse(raw) as { rating?: unknown; tip?: unknown }; rating = j.rating; tip = j.tip; }
+  catch {
+    const m = raw.match(/"rating"\s*:\s*(\d{1,3})/); if (!m) return null;
+    rating = Number(m[1]);
+    tip = raw.match(/"tip"\s*:\s*"([^"]{0,300})"/)?.[1] ?? "";
+  }
+  const n = typeof rating === "number" ? rating : Number(rating);
+  if (!Number.isFinite(n)) return null;
+  return { rating: Math.max(0, Math.min(100, Math.round(n))), tip: typeof tip === "string" ? tip.trim() : "" };
 }
 
 /* ---------- templates ---------- */

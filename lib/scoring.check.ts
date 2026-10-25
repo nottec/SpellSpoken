@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { similarity, similarityTyped, matchScore, matchDetail, bestMatch, missedWords, grade, esNumber, zhNumber, BACKFIRE_BELOW } from "./scoring";
+import { similarity, similarityTyped, matchScore, matchDetail, bestMatch, missedWords, grade, esNumber, zhNumber, judged, ACCENT_FLOOR, BACKFIRE_BELOW } from "./scoring";
 import { mergeAlts } from "./speech";
 
 let passed = 0;
@@ -146,6 +146,16 @@ check("numerals: the recognizer writes numbers as digits; 10 → diez, 100 → c
   assert.equal(zhNumber(20), "二十"); assert.equal(zhNumber(101), "一百零一"); assert.equal(zhNumber(110), "一百一十"); assert.equal(zhNumber(1000), "一千");
   assert.equal(matchScore("10", "十", "char"), 1); assert.equal(matchScore("20", "二十", "char"), 1);
   assert.equal(matchScore("一天2次", "一天两次", "char"), 1); assert.equal(matchScore("5月1号", "五月一号", "char"), 1);
+});
+
+check("judged: the accent rating scales the transcript score; null leaves it; 85 stays Perfecto, 45 is a grudge, under 16 backfires", () => {
+  assert.equal(judged(1, null), 1); assert.equal(judged(1, undefined), 1); assert.equal(judged(1, 100), 1); assert.equal(judged(0.88, null), 0.88);
+  near(judged(1, 85), 0.9025); assert.equal(grade(judged(1, 85)).label, "Perfecto");
+  near(judged(1, 60), 0.74); assert.equal(grade(judged(1, 60)).label, "Más o menos");
+  near(judged(1, 45), 0.6425); assert.ok(judged(1, 45) < 0.7, "an English reading of a perfect transcript becomes a grudge");
+  assert.ok(judged(1, 15) < BACKFIRE_BELOW && judged(1, 16) >= BACKFIRE_BELOW, "only a rating under 16 backfires on its own");
+  near(judged(1, 0), ACCENT_FLOOR); assert.equal(judged(1, 250), 1); near(judged(1, -5), ACCENT_FLOOR);
+  near(judged(0.88, 90), 0.88 * 0.935);
 });
 
 check("grade bands: ≥ 0.90 Perfecto, ≥ 0.75 Bien, ≥ 0.45 Más o menos, below backfires; BACKFIRE_BELOW = 0.45; zh labels", () => {

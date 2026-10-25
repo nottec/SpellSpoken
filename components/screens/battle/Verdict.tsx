@@ -19,6 +19,8 @@ export type CastVerdict = {
   pending: boolean;        // waiting for /api/feedback
   mode: string | null;     // "gemini" | "gemini-text" | "template"
   why: string | null;      // GeminiWhy when the coach did not answer
+  /** Gemini's accent rating 0–100 for this clip (folded into result.score by `judged`); null when no judge answered. */
+  rating?: number | null;
 };
 
 export type VerdictState = { cast: CastVerdict | null; enemyTurn: string | null };
@@ -59,6 +61,7 @@ export default function Verdict({ verdict, lang }: { verdict: VerdictState; lang
             </p>
             <p className="mt-1 text-sm text-shadow">
               {c.pending ? <span className="text-vellum2/80">Coach is listening…</span> : c.tip ? withPinyin(c.tip, lang) : null}
+              {typeof c.rating === "number" && <span className="ml-1 text-xs text-vellum2/70" title="Gemini's rating of the accent in the clip, folded into the score">· accent {c.rating}/100</span>}
               {tag && <span className="ml-1 text-xs text-vellum2/70">{tag}</span>}
               {why && <span className="ml-1 text-xs text-vellum2/70">· {why}</span>}
             </p>

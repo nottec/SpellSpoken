@@ -21,7 +21,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { castCard, endTurn, useRedraw, drawPhrase, castBlocker, canAct, handCards, cardName, stacksOf, type Run, type Card, type Spell, type Enemy } from "@/lib/engine";
 import { isDamageKind } from "@/data/spells";
 import { LANGS, type LangId } from "@/lib/lang";
-import { bestMatch, similarityTyped } from "@/lib/scoring";
+import { bestMatch, similarityTyped, judged } from "@/lib/scoring";
+import { judgePronunciation, type Judgement } from "@/lib/judge";
 import { isWordMastered, type WordStats } from "@/lib/lexicon";
 import { speak, TIMEOUT_BY_LEVEL, IDLE_BY_LEVEL, ACCEPT_AT, type Capture } from "@/lib/speech";
 import { needsFallback, transcribeClip, withFallback } from "@/lib/transcribe";
@@ -217,7 +218,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
   }
 
   /* ---------- the cast ---------- */
-  async function resolveCast(cur: Run, h: HandEntry, word: Vocab, heard: string, raw: number, ms: number, audio: Capture["audio"], viaTyping: boolean, seq: number) {
+  async function resolveCast(cur: Run, h: HandEntry, word: Vocab, heard: string, raw: number, ms: number, audio: Capture["audio"], viaTyping: boolean, seq: number, pre?: Judgement) {
     const mastered = isWordMastered(wordsRef.current, word.id);
     const { run: next, result } = castCard(cur, h.card.uid, word, raw, ms, mastered);
 
@@ -229,10 +230,14 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
     castEffects(h.spell, result);
     const info: CastInfo = { word, heard, score: result.score, backfire: result.backfire, spellName: cardName(h.card, lang), reading: word.reading };
     onCast(info);
+    // `pre` is the judge's answer when the clip was rated before the cast: its tip is already here.
     const clean = result.score >= PRAISE_AT;
-    const tip = clean ? praiseText(L, word) : null;
-    setVerdict({ cast: { seq, card: h.card, spell: h.spell, phrase: word, heard, typed: viaTyping, result, tip, pending: !clean, mode: clean ? "template" : null, why: null }, enemyTurn: null });
-    if (clean) onCast({ ...info, tip: tip! });
+    const tip = pre?.tip ?? (clean ? praiseText(L, word) : null);
+    setVerdict({
+      cast: { seq, card: h.card, spell: h.spell, phrase: word, heard, typed: viaTyping, result, tip, pending: !tip, mode: pre?.mode ?? (tip ? "template" : null), why: pre && pre.rating === null ? pre.why : null, rating: pre?.rating ?? null },
+      enemyTurn: null,
+    });
+    if (tip) onCast({ ...info, tip });
     else requestTip(word, heard, result.score, audio, seq, info);
 
     if (next.phase !== "battle") {
@@ -301,9 +306,20 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
         case "result":
         case "stopped": {
           if (!cap.alts.length || !best.transcript.trim()) { setNotice({ text: "I didn't hear anything — try again." }); return; }
+          // The accent judge: the recognizer is accent-tolerant, so Gemini rates the clip against the
+          // target and `judged` folds the rating in. Without an answer the transcript score stands.
+          let score = best.score, pre: Judgement | undefined;
+          if (cap.audio) {
+            setNotice({ text: "Gemini is judging the accent…" });
+            pre = await judgePronunciation({ target: target.text, reading: target.reading, focus: target.focus, transcript: best.transcript, score: best.score, audio: cap.audio, lang });
+            if (!mounted.current) return;
+            setNotice(null);
+            score = judged(best.score, pre.rating);
+            if (process.env.NODE_ENV !== "production") console.log("[judge]", { rating: pre.rating, why: pre.why, transcriptScore: best.score, score });
+          }
           const latest = runRef.current;   // nothing can have changed while busy, but never cast on a stale run
           if (latest.phase !== "battle" || castBlocker(latest, sel.card.uid)) return;
-          await resolveCast(latest, sel, target, best.transcript, best.score, cap.ms, cap.audio, false, seq);
+          await resolveCast(latest, sel, target, best.transcript, score, cap.ms, cap.audio, false, seq, pre);
           return;
         }
       }
