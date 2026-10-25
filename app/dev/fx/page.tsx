@@ -59,8 +59,8 @@ function SpriteCell({ id, allHit, allCharged, allDead }: { id: string; allHit: n
   useEffect(() => { if (allHit) hit(); }, [allHit]);
   const kind = KIND_OF[id] ?? "minion";
   return (
-    <div className="panel flex flex-col items-center p-3">
-      <div className="flex h-[210px] items-center justify-center">
+    <div className="panel flex flex-col items-center overflow-hidden p-3">
+      <div className="flex h-[210px] max-w-full items-center justify-center">
         <EnemySprite id={id} kind={kind} hurt={hurt} charged={charged || allCharged} dead={dead || allDead} />
       </div>
       <p className="mt-1 font-display text-base italic">{NAME_OF[id] ?? "(unknown id)"}</p>
