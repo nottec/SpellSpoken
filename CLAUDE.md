@@ -75,6 +75,7 @@ Knobs: enemy `hp`/`attack` (data/enemies.ts), `BALANCE.floorScale`, card `power`
 - Dark "candlelit grimoire" palette (tailwind.config.ts: ink/dusk/vellum/ember/moss/blood + element colors). Fraunces for display, Manrope for UI, Noto Serif SC for CJK. No italics on Chinese text.
 - The incantation is the hero of the battle screen. Motion lives over the enemy panel: element strikes, callouts (STEAM!, ×2), damage numbers, knockback and a short shake on crits (StageFx), each with a synthesized cue (lib/sfx.ts; 🔊 toggle, `prefers-reduced-motion` respected). Nothing covers the phrase for more than ~600 ms. The enemy's next move is a large IntentBadge: icon, number, "you'd lose N" after shield and armor.
 - Every Chinese string on screen carries pinyin (`Ruby` / `withPinyin`), including the engine's English log lines after `localizeLine`.
+- Title screen (components/screens/Title.tsx): the lexicon's own words drift up the side bands (seeded PRNG, so SSR and client agree), ember sparks, a gradient wordmark with a breathing glow (84 vw wide at most: anything wider or scaled past the viewport widens the mobile layout viewport), a fan of five real cards (click = begin the run; outer two hidden below `sm`), a wolf and a dragon flanking it on `lg`, stat pills from the data files; every animation has a `prefers-reduced-motion` fallback in the title block of globals.css.
 - Copy is plain and in-world (Eco speaks like a spirit, never like a chatbot).
 
 ## Still to do before judging (priority order)
