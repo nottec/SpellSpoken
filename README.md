@@ -12,7 +12,25 @@ cp .env.example .env.local   # add GEMINI_API_KEY for audio coaching (optional)
 npm run dev                  # http://localhost:3000  — use Chrome, allow the mic
 ```
 
-Without a key the game is fully playable; the coach gives template tips instead of listening to your audio.
+Without a key the game is fully playable; the coach gives template tips instead of listening to your audio. `http://localhost:3000/api/health` shows whether the key was picked up.
+
+## Gemini setup
+
+The game never blocks on Gemini. When a call fails, the coach falls back to template text and the route says why (`why: "nokey" | "quota" | "cooldown" | "timeout" | "badmodel" | "empty" | "error"`), so a missing or exhausted key degrades quietly instead of breaking a run.
+
+1. **Get a key** in [Google AI Studio](https://aistudio.google.com/apikey) and put it in `.env.local` as `GEMINI_API_KEY=…` (on Vercel: Project → Settings → Environment Variables). Never commit it.
+2. **Know your tier.** A fresh key is on the **free tier**: in 2026 that is roughly 5–15 requests per minute and 100–250 per day, *per model*, and the limits belong to the key's **Google Cloud project**, not to the key (a second key in the same project shares the pool). To lift them, open that project in the Google Cloud console and link a **billing account**: the project moves to Tier 1 (hundreds of requests per minute, pay as you go, cents for a demo). A **Google AI Pro / Gemini Advanced** consumer subscription does **not** raise API quota; only billing on the Cloud project does.
+3. **Check the key** with `GET /api/health` (status only, no request to Google) and `GET /api/health?ping=1`, which lists the model names your key can use (`ping.list.models`) and makes one tiny `generateContent` call, returning Google's raw status and message (`ping.generate`). A 429 there is quota; a 404 means the name in `GEMINI_MODEL` is retired, so pick one from the list. `lastError` holds the most recent failure the game itself hit, and `hint` says it in plain English.
+4. **Request budget.** A cast costs one request (`/api/feedback`, skipped when the score is ≥ 97 %); lexicon growth (`/api/vocab`) is budgeted at one request per floor; Eco (`/api/mentor`) costs one per question. The current battle screen still grows the lexicon after each cast, throttled to one request per 8 s, so a fast player on the free tier can hit the per-minute limit. When that happens the model enters a cooldown (from Google's `Retry-After` / "retry in Ns", default 30 s) and the routes answer `why: "cooldown"` without calling Google until it ends.
+
+| variable | default | purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | – | enables Gemini; without it everything is template text |
+| `GEMINI_MODEL` | `gemini-3.8-flash,gemini-3.5-flash` | comma-separated fallback list for audio coaching and Eco |
+| `GEMINI_MODEL_LITE` | `gemini-3.8-flash-lite,gemini-3.1-flash-lite,gemini-3.5-flash` | tried first for bulk vocabulary JSON, then the list above |
+| `GEMINI_TIMEOUT_MS` | `12000` | per-attempt timeout; a slower model is skipped for the next one |
+
+Thinking is off (`thinkingBudget: 0`) because thinking models spend the whole output budget on hidden reasoning and reply with nothing; if a model rejects that setting, the call is retried once without it.
 
 ## How it plays
 
@@ -35,14 +53,17 @@ Without a key the game is fully playable; the coach gives template tips instead 
 
 ```
 components/Game.tsx       all screens (title, battle, reward, end)
+components/hooks/useSpeechCapture.ts  React hook over captureCast: listening, level meter, start/stop
 lib/engine.ts             run state, drawPhrase(), cast(), intents, rewards  — pure, unit-testable
 lib/scoring.ts            normalize + Levenshtein similarity, grade()        — pure
 lib/lexicon.ts            base vocab + Gemini-generated extras, word mastery (localStorage)
-lib/speech.ts             Web Speech recognition, MediaRecorder capture, TTS
-lib/gemini.ts             shared caller: retries on 503, model fallback list
-app/api/feedback/route.ts Gemini listens to the clip and gives ONE tip; template fallback
-app/api/mentor/route.ts   Eco, the Socratic guide
-app/api/vocab/route.ts    generates new lexicon entries for a theme
+lib/speech.ts             captureCast(): Web Speech recognition that tells silence from a miss, stop() that keeps what was heard, clip recording, level meter, TTS
+lib/gemini.ts             shared caller: two model lists, per-attempt timeout, retries, 429 cooldown, status for /api/health
+app/api/feedback/route.ts Gemini listens to the clip and gives ONE tip; language-aware template fallback; skipped at ≥ 97 %
+app/api/mentor/route.ts   Eco, the Socratic guide (keyless hints are language-aware too)
+app/api/vocab/route.ts    generates and validates new lexicon entries for a theme (lite model first)
+app/api/health/route.ts   Gemini status; ?ping=1 lists usable models and makes one test call
+docs/SPEECH_GEMINI.md     how the UI uses the capture hook and the routes
 data/vocab.ts             shared types; vocab.es.ts and vocab.zh.ts hold ~150 entries each, 12 themes, 3 levels
 lib/lang.ts               per-language config: speech code, tokenizer, coaching hints, labels
 data/spells.ts            19 spell effects with themes they draw from
