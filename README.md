@@ -4,6 +4,8 @@ A pronunciation roguelike for Spanish and Mandarin, built for HackTX 2026. Every
 
 **Tracks:** Most Entertaining (Jester's Court) · Best Use of Gemini API
 
+**Play it:** https://spellspoken.vercel.app in Chrome with the mic allowed, or tick "type instead of speak". Source: https://github.com/nottec/incantation
+
 ## Run it
 
 ```bash

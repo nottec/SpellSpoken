@@ -17,7 +17,7 @@ Eight floors, one life, a branching map, a deck, breath, statuses and element re
 
 Next.js 15 (App Router) + React 19 + TypeScript + Tailwind 3. Dependencies: `pinyin-pro`; dev: `tsx`.
 Run: `npm install && npm run dev` (Chrome, allow mic). `npm run build` must pass before any commit; `npm run check` (30 engine + 11 scoring assertions) and `npm run sim` (balance) should too.
-Deploy: Vercel, env vars `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MODEL_LITE` (comma-separated fallback lists), optional `GEMINI_TIMEOUT_MS`.
+Deploy: Vercel project `spellspoken` (team `nottecs-projects`), live at **https://spellspoken.vercel.app**. `vercel deploy --prod --yes` from the repo root (CLI logged in as `nottec`; it uploads the sources and builds on Vercel, so a running `next dev` is fine). Pushes do **not** auto-deploy until the Vercel GitHub app is granted access to the private repo (Project → Settings → Git). Env vars `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MODEL_LITE` (comma-separated fallback lists), optional `GEMINI_TIMEOUT_MS`; key (sensitive), model list and timeout are set for Production and Preview (Oct 25). `vercel link` appends a `VERCEL_OIDC_TOKEN` line to `.env.local` and `.env*` to `.gitignore`: remove both.
 
 ## Layout
 
@@ -79,7 +79,7 @@ Knobs: enemy `hp`/`attack` (data/enemies.ts), `BALANCE.floorScale`, card `power`
 
 ## Still to do before judging (priority order)
 
-1. Put the Gemini key in `.env.local` / Vercel and check `/api/health?ping=1`; test the live URL with a real mic in both languages, one full run each. Watch: 心 said once should close the mic within ~1 s and score 完美; said twice still 完美; a Spanish word read with English vowels should land in Bien or lower (if not, lower `confidenceFactor` in lib/scoring.ts); a sentence must never be cut at a pause (else raise `IDLE_BY_LEVEL[3]` in lib/speech.ts).
+1. Key done (Oct 25): it is in `.env.local` and on Vercel; https://spellspoken.vercel.app/api/health?ping=1 answered `configured: true` with a real request via gemini-3.8-flash. Still to do: test the live URL with a real mic in both languages, one full run each. Watch: 心 said once should close the mic within ~1 s and score 完美; said twice still 完美; a Spanish word read with English vowels should land in Bien or lower (if not, lower `confidenceFactor` in lib/scoring.ts); a sentence must never be cut at a pause (else raise `IDLE_BY_LEVEL[3]` in lib/speech.ts).
 2. Record the demo video: backfire → perfect reacting cast on an exposed enemy → Gemini coaching line → ask Eco "why did that fizzle?" → switch to 中文, cast with pinyin shown.
 3. Devpost write-up + tracks + video + repo + live link. Disclose AI tools.
 4. Pre-master a few words on the demo laptop so the title shows progress.
