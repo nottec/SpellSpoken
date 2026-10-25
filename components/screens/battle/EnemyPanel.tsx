@@ -12,7 +12,8 @@ export type EnemyPanelProps = {
   lang: LangId;
   hurt: boolean;
   dead: boolean;
-  burst: { element: Element; n: number };
+  /** Legacy Burst trigger; optional now that useStageFx strikes carry their own particles. */
+  burst?: { element: Element; n: number };
   /** From useFloatText() / useStageFx(): the section is the host (it shakes); the layer sits over the sprite. */
   host: RefObject<HTMLDivElement | null>;
   layer: ReactElement;
@@ -21,7 +22,9 @@ export type EnemyPanelProps = {
   armor?: number;
 };
 
-export default function EnemyPanel({ enemy: e, lang, hurt, dead, burst, host, layer, shield, armor }: EnemyPanelProps) {
+const NO_BURST = { element: "fire" as Element, n: 0 };
+
+export default function EnemyPanel({ enemy: e, lang, hurt, dead, burst = NO_BURST, host, layer, shield, armor }: EnemyPanelProps) {
   const L = LANGS[lang];
   const intent = intentLine(e);
   const kindTag = e.kind === "final" ? "final boss" : e.kind === "boss" ? "boss" : e.kind === "elite" ? "elite" : null;
