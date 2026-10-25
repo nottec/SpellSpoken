@@ -52,3 +52,85 @@ main { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* ------------------------------------------------------------------ */
+/* fx — visual component library (components/fx). Keyframes stay at     */
+/* top level so Tailwind never purges them; classes live in the         */
+/* components layer so utilities in className can override them.        */
+/* ------------------------------------------------------------------ */
+
+/* sprite idles: slow and small; the incantation stays the hero */
+@keyframes fxBob      { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
+@keyframes fxBreathe  { 0%,100% { transform: scale(1) } 50% { transform: scale(1.028) } }
+@keyframes fxSquish   { 0%,100% { transform: scale(1, 1) } 50% { transform: scale(1.03, .96) } }
+@keyframes fxFlicker  { 0%,100% { opacity: .78 } 35% { opacity: 1 } 55% { opacity: .9 } 70% { opacity: 1 } }
+@keyframes fxDrift    { 0%,100% { transform: translate(0, 0) } 30% { transform: translate(3px, -4px) } 65% { transform: translate(-3px, -1px) } }
+@keyframes fxSway     { 0%,100% { transform: rotate(-2deg) } 50% { transform: rotate(2deg) } }
+@keyframes fxDangle   { 0%,100% { transform: rotate(-3deg) } 50% { transform: rotate(3deg) } }
+@keyframes fxFlap     { 0%,100% { transform: rotate(0) } 50% { transform: rotate(var(--flap, 8deg)) } }
+@keyframes fxRings    { 0% { transform: scale(.5); opacity: .7 } 100% { transform: scale(1.6); opacity: 0 } }
+@keyframes fxEmber    { 0% { transform: translateY(0); opacity: 0 } 20% { opacity: .95 } 100% { transform: translateY(-26px); opacity: 0 } }
+@keyframes fxSpin     { to { transform: rotate(360deg) } }
+/* state changes */
+@keyframes fxHurt     { 0%,100% { transform: translateX(0); filter: none } 15% { transform: translateX(-7px); filter: brightness(2.4) saturate(.3) } 45% { transform: translateX(6px); filter: brightness(1.6) } 75% { transform: translateX(-3px) } }
+@keyframes fxAura     { 0%,100% { transform: scale(.96); opacity: .55 } 50% { transform: scale(1.04); opacity: 1 } }
+@keyframes fxDissolve { 0% { opacity: 1; filter: none; transform: none } 100% { opacity: 0; filter: blur(8px) grayscale(1); transform: translateY(14px) scale(.88) } }
+/* numbers, particles, sheens */
+@keyframes fxFloat    { 0% { transform: translate(-50%, 0) scale(.9); opacity: 0 } 12% { transform: translate(-50%, -8px) scale(1.06); opacity: 1 } 100% { transform: translate(-50%, -66px) scale(1); opacity: 0 } }
+@keyframes fxBurst    { 0% { transform: translate(-50%, -50%) scale(1.2); opacity: 1 } 70% { opacity: 1 } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.3); opacity: 0 } }
+@keyframes fxShimmer  { 0% { transform: translateX(-160%) skewX(-18deg) } 28%, 100% { transform: translateX(260%) skewX(-18deg) } }
+@keyframes fxPop      { 0% { transform: translateY(6px); opacity: 0 } 15% { opacity: 1 } 70% { opacity: 1 } 100% { transform: translateY(-16px); opacity: 0 } }
+@keyframes fxGlow     { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+
+@layer components {
+  /* EnemySprite */
+  .fx-sprite { position: relative; display: inline-block; width: var(--fx-size, 140px); height: var(--fx-size, 140px); flex: none; }
+  .fx-sprite > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .fx-idle-bob     { animation: fxBob 3.4s ease-in-out infinite; }
+  .fx-idle-breathe { animation: fxBreathe 4.2s ease-in-out infinite; transform-origin: 50% 85%; }
+  .fx-idle-squish  { animation: fxSquish 3s ease-in-out infinite; transform-origin: 50% 90%; }
+  .fx-idle-flicker { animation: fxFlicker 2.8s ease-in-out infinite; }
+  .fx-idle-drift   { animation: fxDrift 6s ease-in-out infinite; }
+  .fx-idle-sway    { animation: fxSway 4.4s ease-in-out infinite; transform-origin: 50% 90%; }
+  .fx-idle-dangle  { animation: fxDangle 3.6s ease-in-out infinite; transform-origin: 50% 0%; }
+  /* parts inside an svg: transform-origin is set inline in user units */
+  .fx-part-flap    { animation: fxFlap 3s ease-in-out infinite; transform-box: view-box; }
+  .fx-part-sway    { animation: fxSway 3.2s ease-in-out infinite; transform-box: view-box; }
+  .fx-part-flicker { animation: fxFlicker 2.2s ease-in-out infinite; }
+  .fx-part-rings   { animation: fxRings 2.4s ease-out infinite; transform-box: view-box; }
+  .fx-part-ember   { animation: fxEmber 2.6s ease-out infinite; }
+  .fx-part-spin    { animation: fxSpin 48s linear infinite; transform-box: view-box; }
+  .fx-part-spin-r  { animation: fxSpin 70s linear infinite reverse; transform-box: view-box; }
+  .fx-hurt { animation: fxHurt .35s ease; }
+  .fx-dead { animation: fxDissolve .9s ease-in forwards; pointer-events: none; }
+  .fx-aura {
+    position: absolute; inset: 4%; border-radius: 9999px; pointer-events: none;
+    border: 2px solid rgba(200, 73, 76, .85);
+    box-shadow: 0 0 22px rgba(200, 73, 76, .55), inset 0 0 26px rgba(200, 73, 76, .28);
+    animation: fxAura 1.1s ease-in-out infinite;
+  }
+
+  /* floating numbers (useFloatText) */
+  .fx-float { position: absolute; top: 33%; pointer-events: none; white-space: nowrap; animation: fxFloat 1.1s ease-out forwards; text-shadow: 0 2px 12px rgba(0, 0, 0, .6); }
+
+  /* Burst particles */
+  .fx-particle { position: absolute; left: 50%; top: 50%; pointer-events: none; animation: fxBurst .65s cubic-bezier(.2, .7, .3, 1) forwards; }
+
+  /* SpellCard */
+  .fx-card { width: 150px; min-height: 206px; }
+  .fx-sheen { position: absolute; top: -20%; bottom: -20%; left: 0; width: 34%; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(236, 226, 205, .22), transparent); animation: fxShimmer 5.5s ease-in-out infinite; }
+
+  /* InkCounter delta */
+  .fx-pop { position: absolute; left: 100%; top: -2px; margin-left: 6px; white-space: nowrap; animation: fxPop 1.3s ease-out forwards; }
+
+  /* DoorCard danger glow */
+  .fx-danger { animation: fxGlow 2.6s ease-in-out infinite; }
+}
+
+/* with reduced motion the global rule above cuts every animation to one instant frame;
+   things that must stay readable get a static pose instead of ending at opacity 0 */
+@media (prefers-reduced-motion: reduce) {
+  .fx-float { animation-name: none; opacity: 1; transform: translate(-50%, -24px); }
+  .fx-pop   { animation-name: none; opacity: 1; }
+  .fx-aura  { animation-name: none; opacity: 1; }
+}
