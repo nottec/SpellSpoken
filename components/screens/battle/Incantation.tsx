@@ -5,7 +5,7 @@ import { cardName, previewCast, resonanceAt, REACTION_TEXT, type Card, type Run,
 import type { Vocab } from "@/data/vocab";
 import { isWordMastered, type WordStats } from "@/lib/lexicon";
 import { LANGS, elementLabel, type LangId } from "@/lib/lang";
-import { ListeningRing, VuMeter, Sigil } from "@/components/fx";
+import { ListeningRing, VuMeter, Sigil, Ruby } from "@/components/fx";
 import { EL_TEXT } from "./copy";
 
 export type Notice = { text: string; offerTyping?: boolean };
@@ -53,7 +53,7 @@ export default function Incantation(p: IncantationProps) {
       {ready && card && spell && phrase ? (
         <div key={`${card.uid}:${phrase.id}`} className="animate-reveal">
           <p className="text-xs text-vellum2">
-            <span lang={L.speech} className={`font-display text-sm text-vellum ${L.italic ? "italic" : ""}`}>{cardName(card, lang)}</span> draws from the lexicon · {phrase.theme}
+            <Ruby text={cardName(card, lang)} lang={lang} italic={L.italic} className="font-display text-sm text-vellum" /> draws from the lexicon · {phrase.theme}
             {run.cursed && <span className="text-shadow"> · cursed, one level harder</span>}
             {run.grudges.includes(phrase.id) && <span className="text-blood"> · a word that beat you</span>}
             {isWordMastered(words, phrase.id) && <span className="text-light"> · mastered</span>}
@@ -135,7 +135,7 @@ export default function Incantation(p: IncantationProps) {
         </span>
         {run.chain >= 2 && run.lastElement && (
           <span className={`inline-flex items-center gap-1 ${EL_TEXT[run.lastElement]}`}>
-            · Chain ×{run.chain} <Sigil element={run.lastElement} size={12} /> <span lang={L.speech}>{elementLabel(run.lastElement, lang)}</span>
+            · Chain ×{run.chain} <Sigil element={run.lastElement} size={12} /> <Ruby text={elementLabel(run.lastElement, lang)} lang={lang} />
           </span>
         )}
         {preview?.reaction && <span className="text-light">· {REACTION_TEXT[preview.reaction]}</span>}

@@ -18,21 +18,22 @@
  * confidence-weighted) and is decided before any Gemini call.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { castCard, endTurn, useRedraw, drawPhrase, castBlocker, canAct, handCards, cardName, type Run, type Card, type Spell, type Element, type Enemy } from "@/lib/engine";
+import { castCard, endTurn, useRedraw, drawPhrase, castBlocker, canAct, handCards, cardName, stacksOf, type Run, type Card, type Spell, type Enemy } from "@/lib/engine";
 import { isDamageKind } from "@/data/spells";
 import { LANGS, type LangId } from "@/lib/lang";
 import { bestMatch, similarityTyped } from "@/lib/scoring";
 import { isWordMastered, type WordStats } from "@/lib/lexicon";
 import { speak, type Capture } from "@/lib/speech";
+import { playSfx } from "@/lib/sfx";
 import type { Vocab } from "@/data/vocab";
 import { useSpeechCapture } from "@/components/hooks/useSpeechCapture";
-import { useFloatText, LogPanel } from "@/components/fx";
+import { useStageFx, LogPanel } from "@/components/fx";
 import TopStrip from "./battle/TopStrip";
 import EnemyPanel from "./battle/EnemyPanel";
 import Incantation, { type Notice } from "./battle/Incantation";
 import Verdict, { type CastVerdict, type VerdictState } from "./battle/Verdict";
 import Hand from "./battle/Hand";
-import { castSentence, enemyTurnSentence, praiseText, EL_TEXT } from "./battle/copy";
+import { castSentence, enemyTurnSentence, praiseText } from "./battle/copy";
 
 /** What Eco (the mentor) is told about the last cast. */
 export type CastInfo = {
@@ -93,8 +94,8 @@ export default function Battle(props: BattleProps) {
 function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun, onWords, onCast }: BattleProps) {
   const L = LANGS[lang];
   const mic = useSpeechCapture();
-  const enemyFx = useFloatText();
-  const selfFx = useFloatText();
+  const enemyFx = useStageFx();   // strikes, numbers, callouts and shake over the enemy; each method plays its own sound
+  const selfFx = useStageFx();    // shield sweeps, heals and self-hits over the incantation
 
   const [selected, setSelected] = useState<string | null>(null);
   const [cache, setCache] = useState<{ key: string; map: Record<string, Vocab> }>({ key: "", map: EMPTY });
@@ -104,7 +105,6 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
   const [busy, setBusy] = useState(false);
   const [hurt, setHurt] = useState(false);
   const [dead, setDead] = useState(false);
-  const [burst, setBurst] = useState<{ element: Element; n: number }>({ element: "fire", n: 0 });
   const [staged, setStaged] = useState<Run | null>(null);   // the run after a fatal blow, shown while the sprite dissolves
   const [hintGone, setHintGone] = useState(false);
 
@@ -158,6 +158,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
     if (mic.listening) return;
     setSelected(uid);
     setNotice(null);
+    playSfx("select");
   }, [mic.listening]);
 
   function redraw() {
@@ -175,30 +176,29 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
 
   /* ---------- effects on the stage ---------- */
   const flash = useCallback(() => { setHurt(true); after(400, () => setHurt(false)); }, [after]);
-  const burstOn = useCallback((element: Element) => setBurst((b) => ({ element, n: b.n + 1 })), []);
 
   function castEffects(spell: Spell, r: ReturnType<typeof castCard>["result"]) {
-    if (r.backfire) { selfFx.float(`−${r.selfDamage}`, "text-blood"); return; }
+    if (r.backfire) { selfFx.selfHit(r.selfDamage, { backfire: true }); return; }
     if (isDamageKind(spell.kind)) {
-      const dmg = r.damage + r.echoDamage;
-      if (dmg > 0 || r.armorAbsorbed > 0) {
-        enemyFx.float(`${r.crit ? "✦ " : ""}${dmg + r.armorAbsorbed}`, r.crit ? "text-light" : EL_TEXT[spell.element]);
-        burstOn(spell.element); flash();
+      const dmg = r.damage + r.echoDamage + r.armorAbsorbed;
+      if (dmg > 0) {
+        enemyFx.strike(spell.element, { amount: dmg, crit: r.crit, reaction: r.reaction, weak: r.weak, exposed: r.exposed });
+        flash();
       }
-      if (r.healed) selfFx.float(`+${r.healed}`, "text-moss");
-    } else if (spell.kind === "shield") selfFx.float(`⛨ ${r.shielded}`, "text-light");
-    else if (spell.kind === "heal") selfFx.float(`+${r.healed}`, "text-moss");
-    else if (r.applied.some((a) => a.target === "enemy")) burstOn(spell.element);
+      if (r.healed) selfFx.heal(r.healed);
+    } else if (spell.kind === "shield") selfFx.shield(r.shielded);
+    else if (spell.kind === "heal") selfFx.heal(r.healed);
+    else if (r.applied.some((a) => a.target === "enemy")) { enemyFx.strike(spell.element, { reaction: r.reaction }); flash(); }
     if (r.gained.breath) selfFx.float(`+${r.gained.breath} breath`, "text-ember");
   }
 
   function turnEffects(t: ReturnType<typeof endTurn>["result"]) {
-    if (t.burnDamage) { enemyFx.float(`${t.burnDamage}`, "text-fire"); flash(); }
-    if (t.enemyHit) selfFx.float(`−${t.enemyHit}`, "text-blood");
-    else if (t.hits && (t.blocked || t.armorAbsorbed)) selfFx.float("⛨", "text-light");
-    if (t.thorns) { enemyFx.float(`${t.thorns}`, "text-ember"); flash(); }
-    if (t.enemyHealed) enemyFx.float(`+${t.enemyHealed}`, "text-moss");
-    if (t.regen) selfFx.float(`+${t.regen}`, "text-moss");
+    if (t.burnDamage) { enemyFx.strike("fire", { amount: t.burnDamage }); flash(); }
+    if (t.enemyHit) selfFx.selfHit(t.enemyHit);
+    else if (t.hits && (t.blocked || t.armorAbsorbed)) { selfFx.shield(0); selfFx.float("⛨ held", "text-light"); }
+    if (t.thorns) { enemyFx.strike("wind", { amount: t.thorns }); flash(); }
+    if (t.enemyHealed) enemyFx.heal(t.enemyHealed);
+    if (t.regen) selfFx.heal(t.regen);
   }
 
   /* ---------- coaching ---------- */
@@ -275,6 +275,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
       }
       setNotice(null); setVerdict(null);
       const target = phrase;   // the phrase this capture is scored against, even if the hand re-renders meanwhile
+      playSfx("listen");
       const cap = await mic.start(L.speech, {
         timeoutMs: TIMEOUT_BY_LEVEL[target.level] ?? TIMEOUT_BY_LEVEL[2],
         idleMs: IDLE_BY_LEVEL[target.level] ?? IDLE_BY_LEVEL[2],
@@ -375,7 +376,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
     <div className="pb-24 animate-reveal">
       <TopStrip run={view} lang={lang} />
 
-      <EnemyPanel enemy={enemy} lang={lang} hurt={hurt} dead={dead} burst={burst} host={enemyFx.host} layer={enemyFx.layer} />
+      <EnemyPanel enemy={enemy} lang={lang} hurt={hurt} dead={dead} host={enemyFx.host} layer={enemyFx.layer} shield={view.shield} armor={stacksOf(view.statuses, "armor")} />
 
       <Incantation
         run={run} lang={lang} card={sel?.card ?? null} spell={sel?.spell ?? null} phrase={phrase} words={words}
@@ -389,7 +390,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
 
       <Hand run={run} lang={lang} selected={sel?.card.uid ?? null} onSelect={select} locked={mic.listening} onEndTurn={() => void endTurnNow()} endDisabled={busy || mic.listening || run.phase !== "battle"} />
 
-      <LogPanel lines={run.log} max={4} className="mt-4" />
+      <LogPanel lines={run.log} max={4} lang={lang} className="mt-4" />
 
       {showHint && (
         <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-ember/10 px-4 py-2 text-xs text-vellum ring-1 ring-ember/20" role="note">
