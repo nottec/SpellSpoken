@@ -51,9 +51,15 @@ export async function POST(req: Request) {
   if (judge) {
     const prompt = judgePrompt(L, target, reading, focus, transcript, habits);
     const parts: GeminiPart[] = [{ text: prompt }, { inline_data: { mime_type: audio!.mime, data: audio!.b64 } }];
-    const r = await callGemini([{ parts }], { temperature: 0.2, maxOutputTokens: 220, responseMimeType: "application/json" });
+    const r = await callGemini([{ parts }], { temperature: 0.2, maxOutputTokens: 260, responseMimeType: "application/json" });
     const parsed = parseJudge(r.text);
-    if (parsed) return NextResponse.json<Reply>({ tip: parsed.tip || fallback, mode: "gemini", rating: parsed.rating });
+    if (parsed) {
+      // Mandarin: the model names the tones it heard before it compares; a tone that differs from the
+      // target caps the rating in code, because models are generous with tones on lone syllables.
+      const cap = L.id === "zh" ? toneCap(target, parsed.heard) : null;
+      const rating = cap !== null ? Math.min(parsed.rating, cap) : parsed.rating;
+      return NextResponse.json<Reply & { heard?: string }>({ tip: parsed.tip || fallback, mode: "gemini", rating, heard: parsed.heard || undefined });
+    }
     if (r.text?.trim()) return NextResponse.json<Reply>({ tip: r.text.trim(), mode: "gemini", rating: null });   // answered, but not as JSON: coaching without a rating
     return NextResponse.json<Reply>({ tip: fallback, mode: "template", why: r.why ?? "error", rating: null });
   }
@@ -77,25 +83,43 @@ function judgePrompt(L: LangConfig, target: string, reading: string | undefined,
   return `You are a strict ${L.english} pronunciation examiner inside a game. The learner tried to say: "${target}"${reading ? ` (${L.readingName ?? "reading"}: ${reading})` : ""}.${focus ? ` This phrase trains: ${focus}.` : ""}
 Listen to the audio and rate the pronunciation of exactly that phrase from 0 to 100 as a demanding native teacher would:
 95-100 native-like · 80-94 correct with a slight accent · 60-79 understandable but noticeably foreign (one vowel, consonant${zh ? " or tone" : ""} off) · 35-59 an English-style reading (${zh ? "tones flattened or missing, English stress instead of tone, an English r for r/zh/ch/sh, ü said as oo" : "gliding or reduced vowels, an English r or dark l, a pronounced h, aspirated p/t/k"}) · 0-34 a different word, a missing syllable, or unintelligible.
-${zh ? "Every syllable must carry its tone: any wrong tone caps the rating at 65; flat or missing tones cap it at 50." : "Spanish vowels are short, pure and equal: an English diphthong on any vowel caps the rating at 55; an English r caps it at 60."}
+${zh ? "Every syllable must carry its tone: any wrong tone caps the rating at 65; flat or missing tones cap it at 50. Decide each tone from the pitch contour you actually hear, before comparing with the target: 1 high and level, 2 rising, 3 dipping then rising, 4 falling sharply; a syllable spoken with English statement intonation (level or falling) is NOT a third tone." : "Spanish vowels are short, pure and equal: an English diphthong on any vowel caps the rating at 55; an English r caps it at 60."}
 The speech recognizer's transcript was "${transcript || "(nothing)"}", but it is accent-tolerant: judge only what you hear. Things that matter in ${L.english}: ${L.coachHint}.${habits}
-Reply with JSON only: {"rating": <integer 0-100>, "tip": "<one sentence, at most 20 words: the single most important sound to fix and how${L.hasReading ? ", naming tones by number" : ""}, or specific praise if it was good>"}`;
+Reply with JSON only: {${zh ? '"heard": "<pinyin with tone numbers of exactly what you heard, syllables separated by spaces, e.g. ta4 or xia4 yu3 le5>", ' : ""}"rating": <integer 0-100>, "tip": "<one sentence, at most 20 words: the single most important sound to fix and how${L.hasReading ? ", naming tones by number" : ""}, or specific praise if it was good>"}`;
 }
 
 /** Accepts clean JSON, fenced JSON, or prose that still carries "rating": N. */
-function parseJudge(text: string | null): { rating: number; tip: string } | null {
+function parseJudge(text: string | null): { rating: number; tip: string; heard: string } | null {
   if (!text) return null;
   const raw = text.replace(/```(?:json)?/gi, "").trim();
-  let rating: unknown, tip: unknown;
-  try { const j = JSON.parse(raw) as { rating?: unknown; tip?: unknown }; rating = j.rating; tip = j.tip; }
+  let rating: unknown, tip: unknown, heard: unknown;
+  try { const j = JSON.parse(raw) as { rating?: unknown; tip?: unknown; heard?: unknown }; rating = j.rating; tip = j.tip; heard = j.heard; }
   catch {
     const m = raw.match(/"rating"\s*:\s*(\d{1,3})/); if (!m) return null;
     rating = Number(m[1]);
     tip = raw.match(/"tip"\s*:\s*"([^"]{0,300})"/)?.[1] ?? "";
+    heard = raw.match(/"heard"\s*:\s*"([^"]{0,120})"/)?.[1] ?? "";
   }
   const n = typeof rating === "number" ? rating : Number(rating);
   if (!Number.isFinite(n)) return null;
-  return { rating: Math.max(0, Math.min(100, Math.round(n))), tip: typeof tip === "string" ? tip.trim() : "" };
+  return { rating: Math.max(0, Math.min(100, Math.round(n))), tip: typeof tip === "string" ? tip.trim() : "", heard: typeof heard === "string" ? heard.trim() : "" };
+}
+
+/**
+ * Mandarin: compare the tones the model says it heard (pinyin with tone numbers) with the target's.
+ * Same syllables, one tone off → cap 60; two or more off, or a flat reading → cap 45. Unparsable or a
+ * different syllable count → no cap (the rating stands). Tone 5 is neutral (pinyin-pro's 0).
+ */
+function toneCap(target: string, heard: string): number | null {
+  const want = syllables(target);
+  const got = heard.toLowerCase().replace(/v/g, "ü").split(/[\s'’,/]+/).map((s) => s.replace(/5$/, "0")).filter((s) => /^[a-zü]+\d$/.test(s));
+  if (!want.length || got.length !== want.length) return null;
+  let off = 0;
+  for (let i = 0; i < want.length; i++) {
+    if (want[i].slice(0, -1) !== got[i].slice(0, -1)) return null;   // a different syllable: not a tone question, leave it to the rating
+    if (want[i] !== got[i]) off++;
+  }
+  return off === 0 ? null : off === 1 ? 60 : 45;
 }
 
 /* ---------- templates ---------- */
