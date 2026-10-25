@@ -315,7 +315,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
             if (!mounted.current) return;
             setNotice(null);
             score = judged(best.score, pre.rating);
-            if (process.env.NODE_ENV !== "production") console.log("[judge]", { rating: pre.rating, why: pre.why, transcriptScore: best.score, score });
+            if (process.env.NODE_ENV !== "production") console.log("[judge]", { rating: pre.rating, heard: pre.heard, why: pre.why, transcriptScore: best.score, score });
           }
           const latest = runRef.current;   // nothing can have changed while busy, but never cast on a stale run
           if (latest.phase !== "battle" || castBlocker(latest, sel.card.uid)) return;

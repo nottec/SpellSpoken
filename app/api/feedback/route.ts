@@ -50,15 +50,20 @@ export async function POST(req: Request) {
 
   if (judge) {
     const prompt = judgePrompt(L, target, reading, focus, transcript, habits);
-    const parts: GeminiPart[] = [{ text: prompt }, { inline_data: { mime_type: audio!.mime, data: audio!.b64 } }];
-    const r = await callGemini([{ parts }], { temperature: 0.2, maxOutputTokens: 260, responseMimeType: "application/json" });
+    const clip: GeminiPart = { inline_data: { mime_type: audio!.mime, data: audio!.b64 } };
+    // Mandarin: a judge that knows the target echoes its tones back as "heard", so a second, blind
+    // call transcribes the pinyin tones without the target; both run at once (latency = the slower one).
+    const blind = L.id === "zh"
+      ? callGemini([{ parts: [{ text: BLIND_PINYIN_PROMPT }, clip] }], { temperature: 0, maxOutputTokens: 40 })
+      : Promise.resolve(null);
+    const [r, ear] = await Promise.all([callGemini([{ parts: [{ text: prompt }, clip] }], { temperature: 0.2, maxOutputTokens: 260, responseMimeType: "application/json" }), blind]);
     const parsed = parseJudge(r.text);
     if (parsed) {
-      // Mandarin: the model names the tones it heard before it compares; a tone that differs from the
-      // target caps the rating in code, because models are generous with tones on lone syllables.
-      const cap = L.id === "zh" ? toneCap(target, parsed.heard) : null;
+      const heard = (ear?.text ? cleanPinyin(ear.text) : "") || parsed.heard;
+      // a tone that differs from the target caps the rating in code: models are generous with tones on lone syllables
+      const cap = L.id === "zh" ? toneCap(target, heard) : null;
       const rating = cap !== null ? Math.min(parsed.rating, cap) : parsed.rating;
-      return NextResponse.json<Reply & { heard?: string }>({ tip: parsed.tip || fallback, mode: "gemini", rating, heard: parsed.heard || undefined });
+      return NextResponse.json<Reply & { heard?: string }>({ tip: parsed.tip || fallback, mode: "gemini", rating, heard: heard || undefined });
     }
     if (r.text?.trim()) return NextResponse.json<Reply>({ tip: r.text.trim(), mode: "gemini", rating: null });   // answered, but not as JSON: coaching without a rating
     return NextResponse.json<Reply>({ tip: fallback, mode: "template", why: r.why ?? "error", rating: null });
@@ -105,21 +110,35 @@ function parseJudge(text: string | null): { rating: number; tip: string; heard: 
   return { rating: Math.max(0, Math.min(100, Math.round(n))), tip: typeof tip === "string" ? tip.trim() : "", heard: typeof heard === "string" ? heard.trim() : "" };
 }
 
+const BLIND_PINYIN_PROMPT = "Listen to this clip of a Mandarin learner. Write ONLY the pinyin with tone numbers of exactly what you hear, one syllable per token separated by spaces, deciding each tone from the pitch contour you hear (1 high and level, 2 rising, 3 dipping then rising, 4 falling, 5 neutral), e.g. xia4 yu3 le5. No characters, no commentary. If there is no intelligible speech, output NONE.";
+
+/** "Xia4 yu3 le5." → "xia4 yu3 le0"; NONE or nothing usable → "". */
+function cleanPinyin(text: string): string {
+  const toks = text.replace(/```/g, "").toLowerCase().replace(/v/g, "ü").split(/[\s'’,./"]+/).map((s) => s.replace(/5$/, "0")).filter((s) => /^[a-zü]+\d$/.test(s));
+  return toks.join(" ");
+}
+
 /**
- * Mandarin: compare the tones the model says it heard (pinyin with tone numbers) with the target's.
- * Same syllables, one tone off → cap 60; two or more off, or a flat reading → cap 45. Unparsable or a
- * different syllable count → no cap (the rating stands). Tone 5 is neutral (pinyin-pro's 0).
+ * Mandarin: compare the tones heard (pinyin with tone numbers) with the target's, on the best-aligned
+ * window of the same length (a word said twice is judged on either saying). Same syllables, one tone
+ * off → cap 60; two or more off → cap 45. Unparsable, too short, or different syllables → no cap.
  */
 function toneCap(target: string, heard: string): number | null {
   const want = syllables(target);
   const got = heard.toLowerCase().replace(/v/g, "ü").split(/[\s'’,/]+/).map((s) => s.replace(/5$/, "0")).filter((s) => /^[a-zü]+\d$/.test(s));
-  if (!want.length || got.length !== want.length) return null;
-  let off = 0;
-  for (let i = 0; i < want.length; i++) {
-    if (want[i].slice(0, -1) !== got[i].slice(0, -1)) return null;   // a different syllable: not a tone question, leave it to the rating
-    if (want[i] !== got[i]) off++;
+  if (!want.length || got.length < want.length) return null;
+  let best: number | null = null;
+  for (let start = 0; start + want.length <= got.length; start++) {
+    let off = 0, same = true;
+    for (let i = 0; i < want.length; i++) {
+      const w = want[i], g = got[start + i];
+      if (w.slice(0, -1) !== g.slice(0, -1)) { same = false; break; }   // a different syllable: not a tone question
+      if (w !== g) off++;
+    }
+    if (same && (best === null || off < best)) best = off;
   }
-  return off === 0 ? null : off === 1 ? 60 : 45;
+  if (best === null) return null;
+  return best === 0 ? null : best === 1 ? 60 : 45;
 }
 
 /* ---------- templates ---------- */
