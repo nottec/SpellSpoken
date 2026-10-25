@@ -1,6 +1,6 @@
 "use client";
 
-import { handCards, cardName, cardDesc, castBlocker, effectivePower, type Run } from "@/lib/engine";
+import { handCards, cardName, cardDesc, castBlocker, effectivePower, cardCost, cardTags, type Run } from "@/lib/engine";
 import { LANGS, type LangId } from "@/lib/lang";
 import { SpellCard, BreathPips } from "@/components/fx";
 import { cardHint } from "./copy";
@@ -40,7 +40,9 @@ export default function Hand({ run, lang, selected, onSelect, locked, onEndTurn,
             element={spell.element}
             kind={spell.kind}
             tier={spell.tier}
-            cost={spell.cost}
+            cost={cardCost(run, card)}
+            discounted={cardCost(run, card) < spell.cost}
+            tags={cardTags(card)}
             power={spell.power > 0 ? effectivePower(card) : undefined}
             up={card.up}
             italic={L.italic}

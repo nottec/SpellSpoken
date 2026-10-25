@@ -10,12 +10,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   newRun, chooseNode, advance, startBattle, castCard, endTurn, winBattle, useRedraw, pendingReward, takeCard, takeRelic, rest,
   eventOptionAvailable, resolveEvent, pickEventCard, buyCard, buyRelic, buyRemove, buyUpgrade, leaveShop,
-  drawPhrase, handCards, castBlocker, previewCast, canAct, nextIntent, stacksOf, relicsOf, cardName, spellOfCard, FLOORS,
+  drawPhrase, handCards, castBlocker, previewCast, canAct, nextIntent, stacksOf, relicsOf, cardName, spellOfCard, cardCost, cardTags, FLOORS, RUN_VERSION,
   type Run, type Phase,
 } from "@/lib/engine";
 import { LANGS, loadLang, saveLang, type LangId } from "@/lib/lang";
 import { fullLexicon, mergeExtra, loadWords, saveWords, isWordMastered, type WordStats } from "@/lib/lexicon";
 import { speechSupported } from "@/lib/speech";
+import { playSfx } from "@/lib/sfx";
 import { enemies, enemyName } from "@/data/enemies";
 import { relics, relicName } from "@/data/relics";
 import { spells } from "@/data/spells";
@@ -46,6 +47,7 @@ function loadRun(lang: LangId): Run | null {
     if (!PHASES.includes(r.phase as Phase)) return null;
     if (typeof r.floor !== "number" || r.floor < 0 || r.floor >= FLOORS) return null;
     if (!Array.isArray(r.deck) || !Array.isArray(r.map) || !Array.isArray(r.path) || typeof r.seed !== "number") return null;
+    if (r.version !== RUN_VERSION) return null;   // a run saved by an older engine (smaller hand, no keywords) is not worth resuming
     return r as Run;
   } catch { return null; }
 }
@@ -88,6 +90,9 @@ export default function Game() {
   /* persist the run on every change, and the typing preference (a reload mid-demo must not silently switch to the mic) */
   useEffect(() => { if (run) saveRun(lang, run); }, [run, lang]);
   useEffect(() => { if (!ready) return; try { localStorage.setItem(TYPING_KEY, useTyping ? "1" : "0"); } catch { /* ignore */ } }, [useTyping, ready]);
+
+  /* one sound when a run ends; the End screen itself stays quiet */
+  useEffect(() => { if (run?.phase === "won") playSfx("win"); else if (run?.phase === "dead") playSfx("lose"); }, [run?.phase]);
 
   /* vocab growth: once per floor, when the map comes up */
   useEffect(() => {
@@ -161,8 +166,8 @@ export default function Game() {
         intent: nextIntent(e), charged: e.charged, armor: stacksOf(e.statuses, "armor"), statuses: e.statuses.map(status),
       } : null,
       hand: handCards(run).map(({ card, spell }) => ({
-        phrase: cardName(card, lang), meaning: `${spell.gloss} (${spell.kind})`, element: spell.element, tier: spell.tier, cost: spell.cost,
-        focus: spell.themes.join("/"), affordable: !castBlocker(run, card.uid),
+        phrase: cardName(card, lang), meaning: `${spell.gloss} (${spell.kind})`, element: spell.element, tier: spell.tier, cost: cardCost(run, card),
+        focus: spell.themes.join("/"), affordable: !castBlocker(run, card.uid), note: cardTags(card).join(", ") || undefined,
       })),
       selected: null,
       last: lastCast ? { phrase: lastCast.word.text, heard: lastCast.heard, score: lastCast.score, backfire: lastCast.backfire, reading: lastCast.reading } : null,
@@ -183,7 +188,7 @@ export default function Game() {
       // engine (pure; feed the result to setRun)
       newRun, chooseNode, advance, startBattle, castCard, endTurn, winBattle, useRedraw, pendingReward, takeCard, takeRelic, rest,
       eventOptionAvailable, resolveEvent, pickEventCard, buyCard, buyRelic, buyRemove, buyUpgrade, leaveShop,
-      drawPhrase, handCards, castBlocker, previewCast, canAct, nextIntent,
+      drawPhrase, handCards, castBlocker, previewCast, canAct, nextIntent, cardCost, cardTags,
       data: { spells, enemies, relics, events },
     };
     return () => { delete w.__incantation; };

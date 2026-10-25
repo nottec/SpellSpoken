@@ -109,7 +109,7 @@ export default function Incantation(p: IncantationProps) {
             <label className="inline-flex cursor-pointer items-center gap-2">
               <input type="checkbox" className="accent-ember" checked={useTyping} onChange={(e) => p.onUseTyping(e.target.checked)} disabled={listening} /> type instead of speak
             </label>
-            <span className="hidden sm:inline"><Key k="Space" /> cast · <Key k="H" /> hear · <Key k="R" /> redraw · <Key k="E" /> end turn · <Key k="1–5" /> cards</span>
+            <span className="hidden sm:inline"><Key k="Space" /> cast · <Key k="H" /> hear · <Key k="R" /> redraw · <Key k="E" /> end turn · <Key k="1–9" /> cards</span>
           </div>
 
           {notice && (
@@ -139,6 +139,7 @@ export default function Incantation(p: IncantationProps) {
           </span>
         )}
         {preview?.reaction && <span className="text-light">· {REACTION_TEXT[preview.reaction]}</span>}
+        {run.discount > 0 && <span className="text-wind">· Tailwind: your next card costs {run.discount} less</span>}
       </div>
       {p.layer}
     </section>

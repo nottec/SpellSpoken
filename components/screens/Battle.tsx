@@ -176,6 +176,8 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
     else if (spell.kind === "heal") selfFx.heal(r.healed);
     else if (r.applied.some((a) => a.target === "enemy")) { enemyFx.strike(spell.element, { reaction: r.reaction }); flash(); }
     if (r.gained.breath) selfFx.float(`+${r.gained.breath} breath`, "text-ember");
+    if (r.sacrificed) selfFx.float(`−${r.sacrificed} life`, "text-blood");
+    if (r.drawn) selfFx.float(`+${r.drawn} card${r.drawn === 1 ? "" : "s"}`, "text-wind");
   }
 
   function turnEffects(t: ReturnType<typeof endTurn>["result"]) {
@@ -246,7 +248,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
     if (!sel || !phrase || cur.phase !== "battle") return;
     const why = castBlocker(cur, sel.card.uid);
     if (why) {
-      setNotice({ text: why === "silenced" ? "You are silenced: no tier-3 spells this turn." : why === "not enough breath" ? "Not enough breath for that card." : why });
+      setNotice({ text: why === "silenced" ? "You are silenced: no tier-3 spells this turn." : why === "not enough breath" ? "Not enough breath for that card." : why === "not enough life" ? "Not enough life to pay for that card." : why });
       return;
     }
     busyRef.current = true; setBusy(true);

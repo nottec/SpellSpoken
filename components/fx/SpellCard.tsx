@@ -17,6 +17,10 @@ export type SpellCardProps = {
   disabled?: boolean;
   /** Short preview label, e.g. "steam ↑", "×2 here", "resisted", "too weak", "silenced". */
   hint?: string;
+  /** Keyword badges from the engine's cardTags(card): "Exhaust", "Retain", "Draw 1", "Tailwind", "Detonate". */
+  tags?: string[];
+  /** True when a Tailwind discount applies right now: the cost gem turns wind-coloured. */
+  discounted?: boolean;
   /** Pass LANGS[lang].italic — never italicise Chinese. Defaults to true. */
   italic?: boolean;
   /** With "zh" the name renders with ruby pinyin (and is never italic). */
@@ -30,12 +34,12 @@ const KIND_LABEL: Record<SpellKind, string> = { attack: "attack", shield: "shiel
 /** Hints that explain why a cast is worse or impossible read in blood; everything else in light. */
 const BAD_HINT = /resist|too weak|silenc|not enough|no breath|can.?t|cost/i;
 
-function CostGem({ cost }: { cost: number }) {
+function CostGem({ cost, discounted = false }: { cost: number; discounted?: boolean }) {
   return (
-    <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center" title={`${cost} breath`}>
-      <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full drop-shadow-[0_0_6px_rgba(240,163,94,.5)]" aria-hidden>
-        <path d="M12 1.5 21 7v10l-9 5.5L3 17V7Z" fill="#f0a35e" />
-        <path d="M12 4.2 18.4 8v8L12 19.8 5.6 16V8Z" fill="#f8c98f" opacity=".55" />
+    <span className="relative inline-flex h-7 w-7 shrink-0 items-center justify-center" title={`${cost} breath${discounted ? " (Tailwind: 1 less this cast)" : ""}`}>
+      <svg viewBox="0 0 24 24" className={`absolute inset-0 h-full w-full ${discounted ? "drop-shadow-[0_0_8px_rgba(140,200,230,.7)]" : "drop-shadow-[0_0_6px_rgba(240,163,94,.5)]"}`} aria-hidden>
+        <path d="M12 1.5 21 7v10l-9 5.5L3 17V7Z" fill={discounted ? ELEMENT_HEX.wind : "#f0a35e"} />
+        <path d="M12 4.2 18.4 8v8L12 19.8 5.6 16V8Z" fill={discounted ? "#ffffff" : "#f8c98f"} opacity=".55" />
       </svg>
       <span className="relative font-display text-[13px] font-semibold leading-none text-ink">{cost}</span>
     </span>
@@ -43,13 +47,13 @@ function CostGem({ cost }: { cost: number }) {
 }
 
 /** A grimoire card: vellum face on dusk, element sigil, cost gem, tier pips, rules text, hint badge. ~150 px wide. */
-export default function SpellCard({ name, desc, element, kind, tier, cost, power, up = false, selected = false, disabled = false, hint, italic = true, lang, onClick, hotkey, className = "" }: SpellCardProps) {
+export default function SpellCard({ name, desc, element, kind, tier, cost, power, up = false, selected = false, disabled = false, hint, tags, discounted = false, italic = true, lang, onClick, hotkey, className = "" }: SpellCardProps) {
   const el = ELEMENT_HEX[element];
   const tone = hint ? (disabled || BAD_HINT.test(hint) ? "bad" : "good") : null;
   const zh = lang === "zh";
   return (
     <button
-      type="button" onClick={onClick} disabled={disabled} aria-pressed={selected} aria-label={`${name}, ${KIND_LABEL[kind]}, tier ${tier}, ${cost} breath${hint ? `, ${hint}` : ""}`}
+      type="button" onClick={onClick} disabled={disabled} aria-pressed={selected} aria-label={`${name}, ${KIND_LABEL[kind]}, tier ${tier}, ${cost} breath${tags?.length ? `, ${tags.join(", ")}` : ""}${hint ? `, ${hint}` : ""}`}
       className={`fx-card group relative flex shrink-0 flex-col overflow-hidden rounded-xl border bg-dusk p-3 text-left transition duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 ${
         selected ? "-translate-y-2 border-ember shadow-[0_0_28px_rgba(240,163,94,.35),0_12px_24px_-12px_rgba(0,0,0,.8)]" : "hover:-translate-y-1 hover:shadow-[0_12px_24px_-14px_rgba(0,0,0,.9)]"
       } ${disabled ? "cursor-not-allowed" : ""} ${className}`}
@@ -63,7 +67,7 @@ export default function SpellCard({ name, desc, element, kind, tier, cost, power
 
       <div className={`flex flex-1 flex-col ${disabled ? "opacity-45 saturate-50" : ""}`}>
         <div className="flex items-start justify-between">
-          <CostGem cost={cost} />
+          <CostGem cost={cost} discounted={discounted} />
           <span className="mt-1.5 flex gap-1" title={`tier ${tier}`} aria-hidden>
             {[1, 2, 3].map((t) => <span key={t} className={`h-1.5 w-1.5 rounded-full ${t <= tier ? "bg-vellum2" : "bg-white/10"}`} />)}
           </span>
@@ -76,6 +80,11 @@ export default function SpellCard({ name, desc, element, kind, tier, cost, power
 
         <p lang={lang ? LANG_TAG[lang] : undefined} className={`mt-2 text-balance font-display text-[17px] leading-tight text-vellum ${italic && !zh ? "italic" : ""}`}>{zh ? withPinyin(name, "zh") : name}</p>
         <p className="mt-0.5 text-[10px] uppercase tracking-[.14em] text-vellum2">{KIND_LABEL[kind]} · <span style={{ color: el }}>{element}</span></p>
+        {tags && tags.length > 0 && (
+          <p className="mt-1 flex flex-wrap gap-1" aria-hidden>
+            {tags.map((t) => <span key={t} className="rounded-sm bg-white/10 px-1 py-px text-[9px] font-semibold uppercase tracking-[.1em] text-vellum2">{t}</span>)}
+          </p>
+        )}
         <p className="mt-1.5 line-clamp-3 text-[11px] leading-snug text-vellum2">{desc}</p>
       </div>
 

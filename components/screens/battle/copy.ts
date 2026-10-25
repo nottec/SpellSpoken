@@ -28,12 +28,14 @@ function fmtStatus(a: { status: StatusId; stacks: number; turns: number; target:
 /** "Chispa+ lands for 14, critical, twice as hard — steam. Burn 3." */
 export function castSentence(r: CastResult, card: Card, spell: Spell, lang: LangId): string {
   const name = cardName(card, lang);
-  if (r.backfire) return `${name} fizzles and burns you for ${r.selfDamage}.`;
+  if (r.backfire) return `${name} fizzles and burns you for ${r.selfDamage}.${r.exhausted ? " It is spent for this battle." : ""}`;
   const crit = r.crit ? (r.resonant ? ", resonant" : ", critical") : "";
   const chain = r.chain >= 2 ? `, chain ×${r.chain}` : "";
   let main: string;
   if (isDamageKind(spell.kind)) {
     main = `lands for ${r.damage}`;
+    if (r.consumed) main += `, detonating ${r.consumed.stacks} ${STATUS_LABEL[r.consumed.status].toLowerCase()}`;
+    else if (r.bonusPower) main += ` (+${r.bonusPower} power)`;
     if (r.echoDamage) main += ` and echoes for ${r.echoDamage}`;
     if (r.armorAbsorbed) main += ` (${r.armorAbsorbed} absorbed by armor)`;
     main += crit;
@@ -42,7 +44,7 @@ export function castSentence(r: CastResult, card: Card, spell: Spell, lang: Lang
     if (r.underTier) main += ", too small for this foe";
     if (r.exposed) main += ", through its guard";
     main += chain;
-  } else if (spell.kind === "shield") main = `raises ${r.shielded} shield${crit}${chain}`;
+  } else if (spell.kind === "shield") main = `raises ${r.shielded} shield${r.healed ? ` and mends ${r.healed}` : ""}${crit}${chain}`;
   else if (spell.kind === "heal") main = `mends ${r.healed}${crit}${chain}`;
   else if (spell.kind === "empower" && r.gained.breath) main = `gives ${r.gained.breath} breath`;
   else main = "takes hold";
@@ -51,6 +53,10 @@ export function castSentence(r: CastResult, card: Card, spell: Spell, lang: Lang
   if (isDamageKind(spell.kind) && r.healed) parts.push(`You drain ${r.healed}.`);
   if (r.applied.length) parts.push(`${r.applied.map(fmtStatus).join(", ")}.`);
   if (r.gained.breath && spell.kind !== "empower") parts.push(`+${r.gained.breath} breath.`);
+  if (r.sacrificed) parts.push(`You pay ${r.sacrificed} life.`);
+  if (r.drawn) parts.push(`Draw ${r.drawn}.`);
+  if (spell.cost > 0 && r.costPaid < spell.cost) parts.push(`Tailwind: ${r.costPaid} breath.`);
+  if (r.exhausted) parts.push("It is spent for this battle.");
   if (r.killed) parts.push("It falls.");
   return parts.join(" ");
 }
@@ -88,6 +94,7 @@ export function enemyTurnSentence(t: TurnResult, before: Enemy): string {
   }
   if (t.thorns) parts.push(`Your thorns cut it for ${t.thorns}${t.killed ? " and it falls" : ""}.`);
   if (t.regen) parts.push(`You regenerate ${t.regen}.`);
+  if (t.retained) parts.push(`You keep ${t.retained} card${t.retained === 1 ? "" : "s"}.`);
   if (t.dead) parts.push("You fall.");
   return parts.join(" ");
 }
@@ -95,15 +102,17 @@ export function enemyTurnSentence(t: TurnResult, before: Enemy): string {
 /** Short badge for a card in hand; penalties first. */
 export function cardHint(run: Run, card: Card, spell: Spell): string | undefined {
   const blocker = castBlocker(run, card.uid);
-  if (blocker === "not enough breath" || blocker === "silenced") return blocker;
+  if (blocker === "not enough breath" || blocker === "silenced" || blocker === "not enough life") return blocker;
   const p = previewCast(run, spell);
   const dmg = isDamageKind(spell.kind);
   if (dmg && p.underTier) return "too weak";
   if (dmg && p.resist) return "resisted";
+  if (p.bonusText) return p.bonusText;                       // "+18 from Burn", "detonate 6 Burn: +18", "×1.5 vs Chilled", "+8 from casts"
   if (dmg && p.weak) return "×2 here";
   if (p.reaction) return `${p.reaction} ↑`;
   if (p.chain >= 2 && spell.kind !== "hex" && spell.kind !== "empower") return `chain ×${p.chain}`;
   if (dmg && run.enemy && hasStatus(run.enemy.statuses, "exposed")) return "exposed ×1.5";
+  if (spell.cost > 0 && p.cost < spell.cost) return "tailwind −1";   // never say "cost": SpellCard reads that word as a penalty
   return undefined;
 }
 
