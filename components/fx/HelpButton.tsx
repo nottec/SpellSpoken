@@ -21,6 +21,20 @@ export function MenuButton({ className = "" }: { className?: string }) {
   );
 }
 
+/** Throw the run away and start over from the title. Confirms first: this one is destructive. Game.tsx listens. */
+export const RESET_EVENT = "incantation:reset";
+export function ResetButton({ className = "" }: { className?: string }) {
+  return (
+    <button
+      type="button" aria-label="Reset the run" title="Abandon this run and start over. Mastered words stay mastered."
+      onClick={() => { if (window.confirm("Abandon this run and start over? Mastered words stay mastered.")) window.dispatchEvent(new CustomEvent(RESET_EVENT)); }}
+      className={`inline-flex h-7 items-center justify-center rounded-full bg-white/5 px-2.5 text-xs font-semibold text-vellum2 ring-1 ring-white/10 transition hover:bg-blood/20 hover:text-vellum focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 ${className}`}
+    >
+      Reset
+    </button>
+  );
+}
+
 export type HelpButtonProps = { label?: string; className?: string };
 
 export default function HelpButton({ label, className = "" }: HelpButtonProps) {

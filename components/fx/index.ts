@@ -15,5 +15,5 @@ export { default as Ruby, withPinyin, pinyinOf, hasHan, type RubyProps } from ".
 export { useStageFx, REACTION_CALLOUT, type StageFxApi, type StrikeOpts, type CalloutTone, type ShakeIntensity } from "./StageFx";
 export { default as IntentBadge, INTENT_ICON, type IntentBadgeProps } from "./IntentBadge";
 export { default as SfxToggle, type SfxToggleProps } from "./SfxToggle";
-export { default as HelpButton, openHandbook, HANDBOOK_EVENT, MenuButton, MENU_EVENT, type HelpButtonProps } from "./HelpButton";
+export { default as HelpButton, openHandbook, HANDBOOK_EVENT, MenuButton, MENU_EVENT, ResetButton, RESET_EVENT, type HelpButtonProps } from "./HelpButton";
 export { ELEMENT_HEX, ELEMENT_LABEL, PALETTE, LANG_TAG, LANG_ITALIC, rgba, type Element, type SpellKind, type EnemyKind, type NodeKind, type StatusId, type LangId, type IntentId, type ReactionId } from "./types";

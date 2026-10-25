@@ -23,6 +23,8 @@ export type TitleProps = {
   saved: Run | null;
   onContinue: () => void;
   onBegin: () => void;
+  /** Throw the saved run away (asks first). */
+  onAbandon?: () => void;
   micOk: boolean;
   useTyping: boolean;
   onUseTyping: (v: boolean) => void;
@@ -66,7 +68,7 @@ function DemoFan({ lang, onPick }: { lang: LangId; onPick: () => void }) {
   );
 }
 
-export default function Title({ lang, onLang, lexicon, words, saved, onContinue, onBegin, micOk, useTyping, onUseTyping }: TitleProps) {
+export default function Title({ lang, onLang, lexicon, words, saved, onContinue, onBegin, onAbandon, micOk, useTyping, onUseTyping }: TitleProps) {
   const L = LANGS[lang];
   const ids = Object.keys(words);
   const practiced = ids.length;
@@ -136,6 +138,14 @@ export default function Title({ lang, onLang, lexicon, words, saved, onContinue,
         )}
         <button type="button" onClick={onBegin} className={`${saved ? "btn-quiet" : "btn-ember title-cta"} px-9 py-3.5 text-base`}>Begin the run</button>
       </div>
+      {saved && onAbandon && (
+        <button
+          type="button" onClick={() => { if (window.confirm("Abandon the saved run? Mastered words stay mastered.")) onAbandon(); }}
+          className="title-rise mt-3 text-xs text-vellum2/80 underline decoration-white/20 underline-offset-2 hover:text-blood" style={rise(1.3)}
+        >
+          abandon the saved run
+        </button>
+      )}
 
       <ul className="title-rise mt-8 flex max-w-xl flex-wrap justify-center gap-2" style={rise(1.35)} aria-label="What is inside">
         {stats.map((s) => (

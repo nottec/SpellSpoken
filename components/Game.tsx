@@ -33,7 +33,7 @@ import End from "./screens/End";
 import Mentor, { type MentorCtx } from "./Mentor";
 import Handbook from "./Handbook";
 import Sky from "./Sky";
-import { HANDBOOK_EVENT, MENU_EVENT } from "@/components/fx";
+import { HANDBOOK_EVENT, MENU_EVENT, RESET_EVENT } from "@/components/fx";
 
 /* ---------- the saved run: one per language ---------- */
 
@@ -176,10 +176,17 @@ export default function Game() {
     if (r && r.phase !== "won" && r.phase !== "dead") setSaved(r); else { removeRun(latest.current.lang); setSaved(null); }
     setRun(null); setLastCast(null); setSelection(null);
   }, []);
+  /** Reset: the run and its save are gone; mastery stays. From a header (confirmed there) or the title's "abandon" link. */
+  const reset = useCallback(() => {
+    removeRun(latest.current.lang);
+    lastGrown.current = -1; lastCounted.current = "";
+    setSaved(null); setRun(null); setLastCast(null); setSelection(null); setBackfires(0);
+  }, []);
   useEffect(() => {
     window.addEventListener(MENU_EVENT, toMenu);
-    return () => window.removeEventListener(MENU_EVENT, toMenu);
-  }, [toMenu]);
+    window.addEventListener(RESET_EVENT, reset);
+    return () => { window.removeEventListener(MENU_EVENT, toMenu); window.removeEventListener(RESET_EVENT, reset); };
+  }, [toMenu, reset]);
 
   /* what Eco is told (every field optional on the server) */
   const mentorCtx = useMemo<MentorCtx>(() => {
@@ -235,7 +242,7 @@ export default function Game() {
         <Sky lexicon={lexicon} lang={lang} />
         <Title
           lang={lang} onLang={switchLang} lexicon={lexicon} words={words} saved={saved}
-          onContinue={resume} onBegin={begin} micOk={micOk} useTyping={useTyping} onUseTyping={setUseTyping}
+          onContinue={resume} onBegin={begin} onAbandon={reset} micOk={micOk} useTyping={useTyping} onUseTyping={setUseTyping}
         />
         {handbook && <Handbook lang={lang} onClose={() => setHandbook(false)} />}
       </>
