@@ -203,3 +203,39 @@ main { position: relative; z-index: 1; }
   .fx-intent-in, .fx-intent-danger, .fx-intent-charged .fx-intent-icon { animation: none; }
   .fx-shake, .fx-shake-hard, .fx-recoil, .fx-stage-hit .fx-stage-sprite { animation: none; }
 }
+
+/* ------------------------------------------------------------------ */
+/* title screen (components/screens/Title.tsx): drifting lexicon words, */
+/* ember sparks, a glowing wordmark, a fan of spell cards, pulsing CTA. */
+/* ------------------------------------------------------------------ */
+@keyframes titleDrift  { 0% { transform: translateY(0) rotate(var(--tilt, 0deg)); opacity: 0 } 10% { opacity: var(--peak, .3) } 85% { opacity: var(--peak, .3) } 100% { transform: translateY(-110vh) rotate(var(--tilt, 0deg)); opacity: 0 } }
+@keyframes titleSpark  { 0% { transform: translate(0, 0) scale(.6); opacity: 0 } 15% { opacity: 1 } 100% { transform: translate(var(--sway, 20px), -75vh) scale(1.1); opacity: 0 } }
+@keyframes titleLetter { 0% { transform: translateY(18px) scale(.94); opacity: 0; filter: blur(8px) } 100% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0) } }
+@keyframes titleGlow   { 0%, 100% { transform: translate(-50%, -50%) scale(.92); opacity: .55 } 50% { transform: translate(-50%, -50%) scale(1.08); opacity: .95 } }
+@keyframes titlePulse  { 0% { box-shadow: 0 0 0 0 rgba(240, 163, 94, .6), 0 0 24px rgba(240, 163, 94, .35) } 70% { box-shadow: 0 0 0 16px rgba(240, 163, 94, 0), 0 0 34px rgba(240, 163, 94, .5) } 100% { box-shadow: 0 0 0 0 rgba(240, 163, 94, 0), 0 0 24px rgba(240, 163, 94, .35) } }
+@keyframes titleBob    { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-9px) } }
+@keyframes titleRise   { 0% { transform: translateY(10px); opacity: 0 } 100% { transform: translateY(0); opacity: 1 } }
+
+@layer components {
+  .title-sky      { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .title-word     { position: absolute; top: 100%; white-space: nowrap; font-size: calc(var(--size, 1) * 1rem); color: #ece2cd; opacity: 0; animation: titleDrift var(--dur, 20s) linear infinite; animation-delay: var(--delay, 0s); will-change: transform, opacity; }
+  .title-spark    { position: absolute; top: 100%; width: 4px; height: 4px; border-radius: 9999px; background: #f8c98f; box-shadow: 0 0 8px 2px rgba(240, 163, 94, .55); opacity: 0; animation: titleSpark var(--dur, 9s) ease-out infinite; animation-delay: var(--delay, 0s); }
+  .title-glow     { position: absolute; left: 50%; top: 50%; width: min(640px, 84vw); height: 300px; border-radius: 9999px; pointer-events: none; background: radial-gradient(closest-side, rgba(240, 163, 94, .24), rgba(240, 163, 94, .06) 60%, transparent); filter: blur(12px); animation: titleGlow 4.5s ease-in-out infinite; }
+  .title-letter   { display: inline-block; background-image: linear-gradient(180deg, #fff7e8 0%, #ece2cd 48%, #f0a35e 100%); -webkit-background-clip: text; background-clip: text; color: transparent; animation: titleLetter .9s cubic-bezier(.2, .7, .2, 1) both; }
+  .title-wordmark { filter: drop-shadow(0 0 22px rgba(240, 163, 94, .35)) drop-shadow(0 3px 0 rgba(0, 0, 0, .45)); }
+  .title-rise     { animation: titleRise .7s ease-out both; }
+  .title-cta      { animation: titlePulse 2.4s ease-out infinite; }
+  .title-fan-slot { margin: 0 -14px; transform-origin: 50% 100%; }
+  .title-fan-bob  { animation: titleBob 5.2s ease-in-out infinite; }
+  .title-pill     { display: inline-flex; align-items: center; gap: .4rem; border-radius: 9999px; padding: .3rem .75rem; font-size: .75rem; font-weight: 600; color: #ece2cd; background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-sky { display: none; }
+  .title-letter, .title-rise { animation: none; opacity: 1; transform: none; filter: none; }
+  .title-glow, .title-cta, .title-fan-bob { animation: none; }
+  .title-glow { transform: translate(-50%, -50%); opacity: .7; }
+}
+@media (max-width: 640px) {
+  .title-word { font-size: calc(var(--size, 1) * .7rem); }
+}
