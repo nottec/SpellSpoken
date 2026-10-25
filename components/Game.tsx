@@ -53,6 +53,7 @@ function saveRun(lang: LangId, run: Run) { try { localStorage.setItem(runKey(lan
 function removeRun(lang: LangId) { try { localStorage.removeItem(runKey(lang)); } catch { /* ignore */ } }
 
 const GROW_NOTE_MS = 2500;
+const TYPING_KEY = "incantation.typing";
 
 export default function Game() {
   const [ready, setReady] = useState(false);               // true after localStorage has been read (avoids a flash of the wrong language)
@@ -78,13 +79,15 @@ export default function Game() {
   useEffect(() => {
     const l = loadLang();
     setLang(l); setLexicon(fullLexicon(l)); setWords(loadWords(l)); setSaved(loadRun(l));
-    const ok = speechSupported(); setMicOk(ok); if (!ok) setUseTyping(true);
+    const ok = speechSupported(); setMicOk(ok);
+    try { if (!ok || localStorage.getItem(TYPING_KEY) === "1") setUseTyping(true); } catch { if (!ok) setUseTyping(true); }
     setReady(true);
     return () => { if (noteTimer.current) clearTimeout(noteTimer.current); };
   }, []);
 
-  /* persist the run on every change */
+  /* persist the run on every change, and the typing preference (a reload mid-demo must not silently switch to the mic) */
   useEffect(() => { if (run) saveRun(lang, run); }, [run, lang]);
+  useEffect(() => { if (!ready) return; try { localStorage.setItem(TYPING_KEY, useTyping ? "1" : "0"); } catch { /* ignore */ } }, [useTyping, ready]);
 
   /* vocab growth: once per floor, when the map comes up */
   useEffect(() => {
@@ -168,7 +171,7 @@ export default function Game() {
 
   /* dev hook (never in production): window.__incantation lets a reviewer jump to any screen from the console */
   useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
+    if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_DEV_HOOK !== "1") return;   // NEXT_PUBLIC_DEV_HOOK=1 at build time enables it for scripted QA
     const w = window as unknown as { __incantation?: unknown };
     w.__incantation = {
       // state

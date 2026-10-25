@@ -591,10 +591,12 @@ export function pickEventCard(run: Run, uid: string): Run {
   const r = structuredClone(run);
   const c = cardOf(r, uid); if (!c) throw new Error("pickEventCard: unknown card");
   const name = spellOfCard(c).name;
-  if (r.event!.pending === "remove") { if (r.deck.length <= 1) throw new Error("pickEventCard: last card"); r.deck = r.deck.filter((x) => x.uid !== uid); r.event!.outcome = `${r.event!.outcome ?? ""} ${name} is forgotten.`.trim(); }
-  else { if (c.up) throw new Error("pickEventCard: already upgraded"); c.up = true; r.event!.outcome = `${r.event!.outcome ?? ""} ${name} becomes ${name}+.`.trim(); }
+  let line: string;
+  if (r.event!.pending === "remove") { if (r.deck.length <= 1) throw new Error("pickEventCard: last card"); r.deck = r.deck.filter((x) => x.uid !== uid); line = `${name} is forgotten.`; }
+  else { if (c.up) throw new Error("pickEventCard: already upgraded"); c.up = true; line = `${name} becomes ${name}+.`; }
+  r.event!.outcome = `${r.event!.outcome ?? ""} ${line}`.trim();
   r.event!.pending = undefined; r.event!.stage = "done";
-  log(r, r.event!.outcome!);
+  log(r, line);   // the first half of the outcome was logged by resolveEvent
   return r;
 }
 
