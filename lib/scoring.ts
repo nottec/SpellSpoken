@@ -6,7 +6,7 @@ export function syllables(zh: string): string[] {
   return pinyin(zh, { toneType: "num", type: "array", nonZh: "removed" }).filter((x) => /^[a-zü]+\d$/.test(x));
 }
 
-/** Edit distance over syllables: same syllable, wrong tone costs 0.5; different syllable costs 1. */
+/** Edit distance over syllables: same syllable, wrong tone costs 0.35; different syllable costs 1. */
 function syllableDistance(a: string[], b: string[]) {
   const m = a.length, n = b.length;
   if (!m) return n; if (!n) return m;
@@ -15,7 +15,7 @@ function syllableDistance(a: string[], b: string[]) {
     const cur = [i];
     for (let j = 1; j <= n; j++) {
       const sa = a[i - 1], sb = b[j - 1];
-      const sub = sa === sb ? 0 : sa.slice(0, -1) === sb.slice(0, -1) ? 0.5 : 1;
+      const sub = sa === sb ? 0 : sa.slice(0, -1) === sb.slice(0, -1) ? 0.35 : 1;
       cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + sub);
     }
     prev = cur;
@@ -66,8 +66,13 @@ export function similarity(said: string, target: string, mode: TokenMode = "word
     // (十/石, both shí) count as correct and a wrong tone costs half a syllable.
     const sa = syllables(a), sb = syllables(b);
     if (!sa.length || !sb.length) return Math.max(0, charSim);
-    const sim = 1 - syllableDistance(sa, sb) / Math.max(sa.length, sb.length);
     const n = sb.length;
+    // An isolated syllable gives the recognizer nothing to hear a tone with: it returns its most
+    // likely character for that syllable, so 信 for 心 says more about its language model than
+    // about the learner's tone. Right syllable, other tone → Bien (0.8), never a backfire; tones
+    // are judged on phrases, where context makes the recognizer's character choice meaningful.
+    if (n === 1 && sa.length === 1 && sa[0].slice(0, -1) === sb[0].slice(0, -1)) return sa[0] === sb[0] ? 1 : 0.8;
+    const sim = 1 - syllableDistance(sa, sb) / Math.max(sa.length, sb.length);
     const exp = n <= 2 ? 1.6 : n <= 4 ? 1.3 : 1.1;   // short targets are strict, sentences forgive a little
     return Math.max(0, Math.min(1, Math.pow(Math.max(0, sim), exp)));
   }
@@ -175,18 +180,24 @@ export type Match = {
  * recognizer's third guess means the audio sounded more like two other things first.
  */
 const RANK_FACTOR = [1, 0.88, 0.82, 0.78];
-/** Chrome reports confidence on final results only; interims and non-top alternatives carry 0 = unknown → no factor. */
-const confidenceFactor = (c: number) => (c > 0 ? 0.75 + 0.25 * Math.min(1, c) : 1);
+/**
+ * Chrome reports confidence on final results only; interims and non-top alternatives carry 0 =
+ * unknown → no factor. Spanish leans on it (the es-ES recognizer snaps anglicised words to the
+ * nearest real word, so its confidence is the only evidence left); Mandarin is already judged by
+ * initials and tones and its confidence runs lower on short words, so there it only trims a little.
+ */
+const confidenceFactor = (c: number, mode: TokenMode) =>
+  c > 0 ? (mode === "char" ? 0.85 + 0.15 * Math.min(1, c) : 0.75 + 0.25 * Math.min(1, c)) : 1;
 
 /**
  * Pick the best of several recognizer alternatives. Each is scored with `matchDetail`, then
  * multiplied by its rank factor (1 / 0.88 / 0.82 / 0.78 for the 1st / 2nd / 3rd / later guess;
  * an early-accept snapshot counts as rank 0) and, when the recognizer gave a confidence, by
- * 0.75 + 0.25 × confidence.
+ * 0.75 + 0.25 × confidence (Spanish) or 0.85 + 0.15 × confidence (Mandarin).
  *
  * Resulting bands for a perfect transcript (grade: Perfecto ≥ 0.9, Bien ≥ 0.75, backfire < 0.45):
- *   top guess, confidence ≥ 0.6 (or unknown)  → ≥ 0.90  Perfecto
- *   top guess, confidence 0.5 / 0.3 / 0.1     → 0.875 / 0.825 / 0.775  Bien
+ *   top guess, confidence ≥ 0.6 (or unknown)  → ≥ 0.90  Perfecto   (Mandarin: any confidence ≥ 0.34)
+ *   top guess, confidence 0.5 / 0.3 / 0.1     → 0.875 / 0.825 / 0.775  Bien   (Mandarin: 0.925 / 0.895 / 0.865)
  *   2nd guess, confidence unknown             → 0.88   Bien (a second guess is never Perfecto); with confidence 0.8 → 0.836
  *   3rd guess                                 → ≤ 0.82 Bien (never Perfecto)
  *   4th+ guess                                → ≤ 0.78 Bien
@@ -200,7 +211,7 @@ export function bestMatch(alternatives: Alternative[], target: string, mode: Tok
   for (const alt of alternatives) {
     const rank = alt.early ? 0 : listed++;
     const d = matchDetail(alt.transcript, target, mode);
-    const s = Math.min(1, d.score * RANK_FACTOR[Math.min(rank, RANK_FACTOR.length - 1)] * confidenceFactor(alt.confidence));
+    const s = Math.min(1, d.score * RANK_FACTOR[Math.min(rank, RANK_FACTOR.length - 1)] * confidenceFactor(alt.confidence, mode));
     if (!best || s > best.score) best = { transcript: alt.transcript, score: s, confidence: alt.confidence, rank, matched: d.matched };
   }
   return best ?? { transcript: "", score: 0, confidence: 0, rank: 0, matched: "" };

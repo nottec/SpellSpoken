@@ -38,18 +38,25 @@ check("Mandarin repetition: 心 heard as 心心 scores ≥ 0.99 and misses nothi
   assert.ok(matchScore("心心心", "心", "char") >= 0.99, "three times");
 });
 
-check("Mandarin homophones and tones: 心 vs 新 = 1; 心 vs 性 (xìng) backfires; 心 vs 信 (xìn, wrong tone) backfires", () => {
+check("Mandarin homophones and tones: 心 vs 新 = 1; 心 vs 性 (xìng) backfires; 心 vs 信 (other tone, lone syllable) = 0.8 很好; one wrong tone of two ≈ 0.74, no grudge", () => {
   assert.equal(matchScore("新", "心", "char"), 1);
   assert.ok(matchScore("性", "心", "char") < BACKFIRE_BELOW);
-  assert.ok(matchScore("信", "心", "char") < BACKFIRE_BELOW);
+  near(matchScore("信", "心", "char"), 0.8);
+  assert.equal(grade(0.8, "zh").label, "很好", "a lone syllable cannot show its tone: never a backfire");
   assert.deepEqual(missedWords("性", "心", "char"), ["心"]);
+  assert.deepEqual(missedWords("信", "心", "char"), []);
+  const two = matchScore("白田", "白天", "char");   // bái tián for bái tiān
+  assert.ok(two >= 0.72 && two < 0.76, `${two}`);
+  assert.equal(grade(two, "zh").label, "马马虎虎");
 });
 
-check("Mandarin extra material: 今天下雨了 for 下雨了 keeps the window but pays ×0.9; a wrong-tone repeat is other material", () => {
+check("Mandarin extra material: 今天下雨了 for 下雨了 keeps the window but pays ×0.9; 心什么 for 心 pays ×0.9; a same-syllable repeat (心信) is free", () => {
   const d = matchDetail("今天下雨了", "下雨了", "char");
   assert.equal(d.matched, "下雨了"); assert.equal(d.leftover, "other"); near(d.score, 0.9);
-  const e = matchDetail("心信", "心", "char");
-  assert.equal(e.leftover, "other"); near(e.score, 0.9);
+  const e = matchDetail("心什么", "心", "char");
+  assert.equal(e.matched, "心"); assert.equal(e.leftover, "other"); near(e.score, 0.9);
+  const f = matchDetail("心信", "心", "char");
+  assert.equal(f.leftover, "repeat"); assert.ok(f.score >= 0.99, `${f.score}`);
 });
 
 check("Spanish repetition and extra material: hola hola ≥ 0.99; un el gato negro for el gato in [0.85, 1)", () => {
@@ -92,7 +99,9 @@ check("bestMatch confidence factor: perfect transcript at 0.5 → 0.875 (Bien); 
   near(bestMatch([alt("gato", 0.6)], "gato").score, 0.9);
   near(bestMatch([alt("gato", 1)], "gato").score, 1);
   assert.equal(bestMatch([alt("gato", 0)], "gato").score, 1);
-  near(bestMatch([alt("心心", 0.9)], "心", "char").score, 0.975, "the doubled syllable at confidence 0.9");
+  near(bestMatch([alt("心心", 0.9)], "心", "char").score, 0.985, "the doubled syllable at confidence 0.9 (Mandarin factor 0.85 + 0.15c)");
+  near(bestMatch([alt("心", 0.5)], "心", "char").score, 0.925, "Mandarin confidence 0.5 is still 完美");
+  assert.equal(grade(0.925, "zh").label, "完美");
   near(bestMatch([alt("gato", 0.3)], "gato").score, 0.825);
   assert.ok(bestMatch([alt("gato", 0.01)], "gato").score >= 0.75, "confidence alone never backfires a perfect transcript");
   const miss = bestMatch([alt("perro", 0.9)], "gato");
@@ -112,7 +121,7 @@ check("mergeAlts (lib/speech.ts): finals first, snapshot appended; it inherits c
   assert.deepEqual(mergeAlts([alt("Gatos", 0.7)], [], { transcript: "gato", confidence: 0 }), [alt("Gatos", 0.7), alt("gato", 0.7, true)], "case-insensitive prefix");
   // early accept never beats the confidence-weighted final when the final merely grew
   const m = bestMatch(mergeAlts([alt("心什么", 0.8)], [], snap), "心", "char");
-  near(m.score, 0.95); assert.equal(m.rank, 0); assert.equal(m.transcript, "心");
+  near(m.score, 0.97); assert.equal(m.rank, 0); assert.equal(m.transcript, "心");   // 1.0 × (0.85 + 0.15 × 0.8), inherited from the final
   // …but when the final disagrees outright the snapshot competes at rank 0 with no confidence factor
   assert.equal(bestMatch(mergeAlts([alt("性", 0.9)], [], snap), "心", "char").score, 1);
 });

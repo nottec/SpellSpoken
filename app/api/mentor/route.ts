@@ -19,8 +19,9 @@ type Ctx = {
     name: string; gloss?: string; weak?: string; resist?: string; minTier?: number; hpNow?: number; hp?: number;
     intent?: string; charged?: boolean; armor?: number; statuses?: StatusLike[];
   } | null;
-  hand?: { phrase: string; meaning?: string; element?: string; tier?: number; cost?: number; focus?: string; affordable?: boolean; note?: string }[];
-  selected?: { phrase: string; meaning?: string; focus?: string; reading?: string } | null;
+  hand?: { phrase: string; meaning?: string; element?: string; tier?: number; cost?: number; focus?: string; affordable?: boolean; note?: string; incantation?: string; reading?: string }[];
+  /** The card the learner has selected and the incantation drawn for it: "this word" / "this card" in their questions. */
+  selected?: { phrase: string; meaning?: string; focus?: string; reading?: string; card?: string; effect?: string; element?: string; cost?: number } | null;
   last?: { phrase: string; heard: string; score: number; backfire: boolean; reading?: string } | null;
 };
 type Reply = { text: string; mode: "gemini" | "template"; why?: GeminiWhy };
@@ -32,6 +33,7 @@ Rules you always follow:
 - For pronunciation help, describe the mouth: where the tongue goes, how much air, whether the sound is voiced, and compare to an English sound they already know. Give ONE sound at a time.${L.hasReading ? " For tones, describe the pitch shape (flat, rising, dipping, falling) and name the tone number." : ""}
 - For strategy, point at the evidence on screen ("look at what the enemy is weak to", "count your breath", "it told you what it does next") rather than naming the move.
 - If they ask the same thing twice, give a bigger hint the second time, but still not the whole answer.
+- "This word", "this card", "the one I'm looking at" always mean the selected card and its incantation given in the context below; coach that phrase, one sound or tone at a time. Never read the whole phrase for them.
 - Two sentences max. Warm, a little mysterious, no emojis, no bullet points.`;
 
 /**
@@ -73,8 +75,11 @@ function describe(ctx: Ctx, L: LangConfig) {
   lines.push(e
     ? `Enemy: ${e.name}${e.gloss ? ` (${e.gloss})` : ""}${e.weak ? `, weak to ${e.weak}` : ""}${e.resist ? `, resists ${e.resist}` : ""}${e.minTier ? `, shrugs off spells below tier ${e.minTier}` : ""}${e.hpNow !== undefined ? `, HP ${e.hpNow}/${e.hp ?? "?"}` : ""}${e.armor ? `, armor ${e.armor}` : ""}${e.intent ? `, next it will ${e.intent}${e.charged ? " (charged, double damage)" : ""}` : ""}${e.statuses?.length ? `, statuses: ${statusText(e.statuses)}` : ""}.`
     : "Enemy: none.");
-  lines.push(`Hand: ${ctx.hand?.length ? ctx.hand.map((s) => `${s.phrase}${s.element ? ` [${s.element}` : "["}${s.tier ? `, tier ${s.tier}` : ""}${s.cost !== undefined ? `, ${s.cost} breath` : ""}${s.affordable === false ? ", unaffordable" : ""}${s.note ? `, ${s.note}` : ""}${s.focus ? `, trains ${s.focus}` : ""}]`).join("; ") : "empty"}.`);
-  lines.push(`Selected incantation: ${ctx.selected ? `${ctx.selected.phrase}${ctx.selected.reading ? ` (${ctx.selected.reading})` : ""}${ctx.selected.focus ? ` (trains ${ctx.selected.focus})` : ""}` : "none"}.`);
+  lines.push(`Hand: ${ctx.hand?.length ? ctx.hand.map((s) => `${s.phrase}${s.element ? ` [${s.element}` : "["}${s.tier ? `, tier ${s.tier}` : ""}${s.cost !== undefined ? `, ${s.cost} breath` : ""}${s.affordable === false ? ", unaffordable" : ""}${s.note ? `, ${s.note}` : ""}${s.focus ? `, trains ${s.focus}` : ""}${s.incantation ? `, its incantation right now: "${s.incantation}"${s.reading ? ` (${s.reading})` : ""}` : ""}]`).join("; ") : "empty"}.`);
+  const sel = ctx.selected;
+  lines.push(sel && sel.phrase
+    ? `The learner is looking at the card ${sel.card ?? "(unnamed)"}${sel.element ? ` [${sel.element}` : "["}${sel.cost !== undefined ? `, ${sel.cost} breath` : ""}]${sel.effect ? `: ${sel.effect}` : ""} Its incantation right now, the phrase they must say to cast it: "${sel.phrase}"${sel.reading ? ` (${sel.reading})` : ""}${sel.meaning ? `, meaning "${sel.meaning}"` : ""}${sel.focus ? `, trains ${sel.focus}` : ""}. "This word" or "this card" means this one.`
+    : "The learner has no card selected right now.");
   lines.push(`Last cast: ${ctx.last ? `tried "${ctx.last.phrase}"${ctx.last.reading ? ` (${ctx.last.reading})` : ""}, recognizer heard "${ctx.last.heard || "nothing"}", ${Math.round((ctx.last.score ?? 0) * 100)}%${ctx.last.backfire ? ", it backfired" : ""}` : "none yet"}.`);
   lines.push(`The learner's language is ${L.english}; the UI is English.`);
   return lines.join("\n");
@@ -135,6 +140,13 @@ function fallback(q: string, ctx: Ctx, L: LangConfig) {
     return zh
       ? "It heard the right syllables, so the tones drifted. Hum the shape of each tone first, flat, rising, dipping, falling, then put the syllable on it. Which one wobbles?"
       : "It heard most of it. Something in the vowels drifted toward English; Spanish vowels are short and never glide. Which vowel did you stretch?";
+  }
+  if (/this (word|card|one|phrase|spell)|looking at|selected|how do i say|how to say/.test(s) && ctx.selected?.phrase) {
+    const f = ctx.selected.focus;
+    if (f) return zh ? zhMouth(f) : esMouth(f);
+    return zh
+      ? `Take ${ctx.selected.reading ?? "it"} one syllable at a time: hum each tone's shape first, then put the syllable on it. Which one wobbles?`
+      : "Say it one syllable at a time, each vowel short and the same length, then at speed. Which syllable changes most?";
   }
   if (/which|what spell|cast|strategy|best|breath|cost|turn/.test(s) && ctx.enemy) {
     return `Read the line under the enemy's name: it tells you what it fears${ctx.enemy.intent ? ", and it has already told you what it does next" : ""}. The sigils in your book carry the same marks${ctx.breath !== undefined ? "; count your breath before you choose" : ""}.`;

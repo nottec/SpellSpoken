@@ -46,6 +46,9 @@ export type CastInfo = {
   tip?: string;           // coach sentence once it arrived
 };
 
+/** What the player is looking at right now: the selected card and the incantation drawn for it (Eco's context). */
+export type BattleSelection = { card: Card; spell: Spell; phrase: Vocab | null; phrases: Record<string, Vocab> };
+
 export type BattleProps = {
   run: Run;                               // phase "battle"
   lang: LangId;
@@ -56,6 +59,7 @@ export type BattleProps = {
   onRun: (next: Run) => void;             // commit engine state (after castCard / endTurn / useRedraw)
   onWords: (w: WordStats) => void;        // mastery stats after every scored cast (caller persists)
   onCast: (info: CastInfo) => void;       // after every scored cast; call again when the tip arrives
+  onSelection?: (s: BattleSelection | null) => void;   // the card and phrase on screen, whenever they change; null when the battle unmounts
 };
 
 /** Capture timings and the early-accept threshold come from lib/speech.ts (TIMEOUT_BY_LEVEL, IDLE_BY_LEVEL, ACCEPT_AT). */
@@ -77,7 +81,7 @@ export default function Battle(props: BattleProps) {
   return <BattleInner key={battleId} {...props} />;
 }
 
-function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun, onWords, onCast }: BattleProps) {
+function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun, onWords, onCast, onSelection }: BattleProps) {
   const L = LANGS[lang];
   const mic = useSpeechCapture();
   const enemyFx = useStageFx();   // strikes, numbers, callouts and shake over the enemy; each method plays its own sound
@@ -139,6 +143,10 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
     if (!sel || phrase || !lexicon.length || run.phase !== "battle") return;
     remember(sel.card.uid, draw(run, sel.spell, Object.values(phrases)));
   }, [sel, phrase, lexicon, run, phrases, remember, draw]);
+
+  // Tell the orchestrator what the player is looking at (Eco reads it); cleared when the battle unmounts.
+  useEffect(() => { onSelection?.(sel ? { card: sel.card, spell: sel.spell, phrase, phrases } : null); }, [sel, phrase, phrases, onSelection]);
+  useEffect(() => () => { onSelection?.(null); }, [onSelection]);
 
   const select = useCallback((uid: string) => {
     if (mic.listening) return;
@@ -270,6 +278,8 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
         accept: (alts) => bestMatch(alts, target.text, L.tokens).score >= ACCEPT_AT,
       });
       if (!mounted.current) return;   // the screen is gone: the hook already released the mic; nothing to score
+      const best = bestMatch(cap.alts, target.text, L.tokens);
+      if (process.env.NODE_ENV !== "production") console.log("[speech]", { target: target.text, reason: cap.reason, early: cap.early, ms: cap.ms, alts: cap.alts, best });   // dev only: what Chrome returned and how it scored
       switch (cap.reason) {
         // Not casts: no breath, no damage, no grudge. The card stays selected for another try.
         case "silence": setNotice({ text: "I didn't hear anything — try again." }); return;
@@ -279,7 +289,6 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
         // Casts: "result" (final, early accept or idle stop) and "stopped" (the Stop button / Space) both score what was heard.
         case "result":
         case "stopped": {
-          const best = bestMatch(cap.alts, target.text, L.tokens);
           if (!cap.alts.length || !best.transcript.trim()) { setNotice({ text: "I didn't hear anything — try again." }); return; }
           const latest = runRef.current;   // nothing can have changed while busy, but never cast on a stale run
           if (latest.phase !== "battle" || castBlocker(latest, sel.card.uid)) return;

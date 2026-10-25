@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   newRun, chooseNode, advance, startBattle, castCard, endTurn, winBattle, useRedraw, pendingReward, takeCard, takeRelic, rest,
   eventOptionAvailable, resolveEvent, pickEventCard, buyCard, buyRelic, buyRemove, buyUpgrade, leaveShop,
-  drawPhrase, handCards, castBlocker, previewCast, canAct, nextIntent, stacksOf, relicsOf, cardName, spellOfCard, cardCost, cardTags, FLOORS, RUN_VERSION,
+  drawPhrase, handCards, castBlocker, previewCast, canAct, nextIntent, stacksOf, relicsOf, cardName, cardDesc, spellOfCard, cardCost, cardTags, FLOORS, RUN_VERSION,
   type Run, type Phase,
 } from "@/lib/engine";
 import { LANGS, loadLang, saveLang, type LangId } from "@/lib/lang";
@@ -22,7 +22,7 @@ import { relics, relicName } from "@/data/relics";
 import { spells } from "@/data/spells";
 import { events } from "@/data/events";
 import type { Vocab } from "@/data/vocab";
-import Battle, { type CastInfo } from "./screens/Battle";
+import Battle, { type CastInfo, type BattleSelection } from "./screens/Battle";
 import Title from "./screens/Title";
 import MapScreen from "./screens/MapScreen";
 import RewardScreen from "./screens/RewardScreen";
@@ -67,6 +67,7 @@ export default function Game() {
   const [useTyping, setUseTyping] = useState(false);
   const [micOk, setMicOk] = useState(true);
   const [lastCast, setLastCast] = useState<CastInfo | null>(null);
+  const [selection, setSelection] = useState<BattleSelection | null>(null);   // the card + incantation on screen, for Eco
   const [backfires, setBackfires] = useState(0);           // nudges Eco's orb
   const [growNote, setGrowNote] = useState<string | null>(null);
 
@@ -168,11 +169,15 @@ export default function Game() {
       hand: handCards(run).map(({ card, spell }) => ({
         phrase: cardName(card, lang), meaning: `${spell.gloss} (${spell.kind})`, element: spell.element, tier: spell.tier, cost: cardCost(run, card),
         focus: spell.themes.join("/"), affordable: !castBlocker(run, card.uid), note: cardTags(card).join(", ") || undefined,
+        incantation: selection?.phrases[card.uid]?.text, reading: selection?.phrases[card.uid]?.reading,
       })),
-      selected: null,
+      selected: selection && run.phase === "battle" ? {
+        card: cardName(selection.card, lang), effect: cardDesc(selection.card), element: selection.spell.element, cost: cardCost(run, selection.card),
+        phrase: selection.phrase?.text ?? "", meaning: selection.phrase?.en, focus: selection.phrase?.focus, reading: selection.phrase?.reading,
+      } : null,
       last: lastCast ? { phrase: lastCast.word.text, heard: lastCast.heard, score: lastCast.score, backfire: lastCast.backfire, reading: lastCast.reading } : null,
     };
-  }, [run, lang, lastCast]);
+  }, [run, lang, lastCast, selection]);
 
   /* dev hook (never in production): window.__incantation lets a reviewer jump to any screen from the console */
   useEffect(() => {
@@ -213,7 +218,7 @@ export default function Game() {
       screen = (
         <Battle
           run={run} lang={lang} lexicon={lexicon} words={words} useTyping={useTyping} onUseTyping={setUseTyping}
-          onRun={setRun} onWords={onWords} onCast={onCast}
+          onRun={setRun} onWords={onWords} onCast={onCast} onSelection={setSelection}
         />
       );
       break;

@@ -100,8 +100,14 @@ pieces of recognizer evidence:
   free; other material costs ×0.9. `missedWords` looks only at the matched window.
 - **rank factor** by position in the recognizer's list: 1 / 0.88 / 0.82 / 0.78 for the 1st / 2nd /
   3rd / 4th+ guess, so only the recognizer's top guess can be Perfecto. An early snapshot counts as rank 0.
-- **confidence factor** `0.75 + 0.25 × confidence` when the recognizer gave one (finals, top guess);
-  0 / unknown means no factor.
+- **confidence factor** `0.75 + 0.25 × confidence` (Spanish) or `0.85 + 0.15 × confidence` (Mandarin)
+  when the recognizer gave one (finals, top guess); 0 / unknown means no factor. Spanish leans on it
+  because the es-ES recognizer snaps an anglicised word to the nearest real word; Mandarin is already
+  judged by initials and tones and its confidence runs lower on short words.
+- **lone syllables**: the recognizer cannot hear a tone on an isolated syllable, it just returns its
+  most likely character, so a right-syllable, other-tone pick (信 for 心) scores 0.8 (很好), never a
+  backfire. Tones are judged on phrases, where context makes the character choice meaningful; there a
+  wrong tone costs 0.35 of a syllable (one wrong tone of two → 0.74, 马马虎虎, no grudge).
 
 Returns `{ transcript, score, confidence, rank, matched }`; `transcript` is the whole alternative
 (show it: "心心" is honest), `matched` the part that scored. Grades: Perfecto ≥ 0.90, Bien ≥ 0.75,
@@ -111,13 +117,14 @@ bonuses on top.
 | target    | heard (rank, confidence)                 | match | ×rank | ×conf | score | grade        |
 |-----------|------------------------------------------|-------|-------|-------|-------|--------------|
 | 心        | 心 (early snapshot, no final yet)         | 1.00  | 1     | –     | 1.00  | 完美         |
-| 心        | 心 (top final, 0.8)                       | 1.00  | 1     | 0.95  | 0.95  | 完美         |
-| 心        | 心心 (top final, 0.9)                     | 1.00  | 1     | 0.975 | 0.975 | 完美         |
-| 心        | 新 (homophone, top final, 0.8)            | 1.00  | 1     | 0.95  | 0.95  | 完美         |
-| 心        | 心什么 (top final 0.8) + snapshot 心       | 1.00  | 1     | 0.95  | 0.95  | 完美 (snapshot wins over 0.9 × 0.95) |
-| 心        | 信 xìn (wrong tone)                      | 0.33  | 1     | –     | 0.33  | 失败 (backfire) |
+| 心        | 心 (top final, 0.8)                       | 1.00  | 1     | 0.97  | 0.97  | 完美         |
+| 心        | 心心 (top final, 0.9)                     | 1.00  | 1     | 0.985 | 0.985 | 完美         |
+| 心        | 新 (homophone, top final, 0.8)            | 1.00  | 1     | 0.97  | 0.97  | 完美         |
+| 心        | 心什么 (top final 0.8) + snapshot 心       | 1.00  | 1     | 0.97  | 0.97  | 完美 (snapshot wins over 0.9 × 0.97) |
+| 心        | 信 xìn (other tone, lone syllable)        | 0.80  | 1     | –     | 0.80  | 很好 (no tone evidence on one syllable) |
 | 心        | 性 xìng                                  | 0.00  | 1     | –     | 0.00  | 失败 (backfire) |
-| 下雨了    | 今天下雨了 (top final, 0.9)               | 0.90  | 1     | 0.975 | 0.88  | 很好         |
+| 白天      | 白田 bái tián (one wrong tone of two)     | 0.74  | 1     | –     | 0.74  | 马马虎虎, no grudge |
+| 下雨了    | 今天下雨了 (top final, 0.9)               | 0.90  | 1     | 0.985 | 0.89  | 很好         |
 | hola      | hola hola (top final, 0.7)               | 1.00  | 1     | 0.925 | 0.925 | Perfecto     |
 | gato      | gato (top final, 0.5)                    | 1.00  | 1     | 0.875 | 0.875 | Bien         |
 | gato      | gato (top final, 0.6)                    | 1.00  | 1     | 0.90  | 0.90  | Perfecto     |
