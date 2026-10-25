@@ -188,11 +188,12 @@ function template(L: LangConfig, target: string, reading: string | undefined, ra
       : `Clean cast. ${focus ? `Your ${focus} was on point.` : "Keep that rhythm."}`;
   }
   if (!transcript.trim()) return "I didn't catch anything. Speak right after the glow, a little louder.";
+  // the transcript is not quoted: the recognizer's guess is rarely the real pronunciation issue
   if (zh) {
     const hint = zhToneHint(target, transcript);
-    if (score >= 0.75) return `Close: I heard "${transcript}". ${hint ?? `The syllables are there; make every tone of ${reading ?? target} deliberate.`}`;
-    return `I heard "${transcript}" instead of ${shown}. ${hint ?? (focus ? `Work on the ${focus}.` : "Check the initials first: zh, ch, sh curl the tongue back; z, c, s stay flat; ü is \"ee\" with rounded lips.")}`;
+    if (score >= 0.75) return `Close. ${hint ?? `The syllables are there; make every tone of ${reading ?? target} deliberate.`}`;
+    return `That was not quite ${shown}. ${hint ?? (focus ? `Work on the ${focus}.` : "Check the initials first: zh, ch, sh curl the tongue back; z, c, s stay flat; ü is \"ee\" with rounded lips.")}`;
   }
-  if (score >= 0.75) return `Close: I heard "${transcript}". ${focus ? `Focus on the ${focus}.` : "Slow down on the vowels; Spanish vowels are short and never glide."}`;
-  return `I heard "${transcript}" instead of "${target}". ${focus ? `Work on the ${focus}.` : "Say each syllable with equal weight."}`;
+  if (score >= 0.75) return `Close. ${focus ? `Focus on the ${focus}.` : "Slow down on the vowels; Spanish vowels are short and never glide."}`;
+  return `That was not quite "${target}". ${focus ? `Work on the ${focus}.` : "Say each syllable with equal weight."}`;
 }

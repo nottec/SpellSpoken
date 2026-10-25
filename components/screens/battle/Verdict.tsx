@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Card, CastResult, Spell } from "@/lib/engine";
 import type { Vocab } from "@/data/vocab";
 import { LANGS, type LangId } from "@/lib/lang";
@@ -40,8 +41,14 @@ function ScoreRing({ score, backfire }: { score: number; backfire: boolean }) {
 }
 
 /** The result of the last cast (kept until the next cast starts) and, after End turn, what the enemy did. */
+const HEARD_KEY = "incantation.showHeard";
+
 export default function Verdict({ verdict, lang }: { verdict: VerdictState; lang: LangId }) {
   const L = LANGS[lang];
+  // the recognizer's transcript is hidden by default (it is rarely the real pronunciation issue); the choice persists
+  const [showHeard, setShowHeardState] = useState(false);
+  useEffect(() => { try { setShowHeardState(localStorage.getItem(HEARD_KEY) === "1"); } catch { /* ignore */ } }, []);
+  const setShowHeard = (f: (v: boolean) => boolean) => setShowHeardState((v) => { const n = f(v); try { localStorage.setItem(HEARD_KEY, n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const c = verdict.cast;
   const g = c ? grade(c.result.score, lang) : null;
   const why = c?.why ? WHY_TEXT[c.why] ?? "coach unavailable" : null;
@@ -56,8 +63,17 @@ export default function Verdict({ verdict, lang }: { verdict: VerdictState; lang
               <Ruby text={`${g.label}.`} lang={lang} className={g.color} italic={L.italic} /> {withPinyin(castSentence(c.result, c.card, c.spell, lang), lang)}
             </p>
             <p className="mt-1 text-sm text-vellum2">
-              For <span lang={L.speech} className="text-vellum">“{withPinyin(c.phrase.text, lang)}”</span> {c.typed ? "you typed" : "it heard"} <span lang={L.speech} className="text-vellum">“{c.heard ? withPinyin(c.heard, lang) : "nothing"}”</span>.
+              {c.typed || showHeard ? (
+                <>For <span lang={L.speech} className="text-vellum">“{withPinyin(c.phrase.text, lang)}”</span> {c.typed ? "you typed" : "it heard"} <span lang={L.speech} className="text-vellum">“{c.heard ? withPinyin(c.heard, lang) : "nothing"}”</span>.</>
+              ) : (
+                <>For <span lang={L.speech} className="text-vellum">“{withPinyin(c.phrase.text, lang)}”</span>.</>
+              )}
               {c.result.grudge && <span className="text-blood"> This word will return.</span>}
+              {!c.typed && (
+                <button type="button" onClick={() => setShowHeard((v) => !v)} className="ml-2 text-xs text-vellum2/70 underline decoration-white/20 underline-offset-2 hover:text-vellum" title="The recognizer's transcript: often not the real pronunciation issue, so it is hidden by default">
+                  {showHeard ? "hide what it heard" : "show what it heard"}
+                </button>
+              )}
             </p>
             {/* the tip itself is spoken by Eco in a bubble (Mentor); only the judge's numbers stay here */}
             <p className="mt-1 text-xs text-vellum2/70">
