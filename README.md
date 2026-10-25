@@ -1,8 +1,8 @@
-# Incantation
+# SpellSpoken
 
 A pronunciation roguelike for Spanish and Mandarin, built for HackTX 2026. Every card in your hand is a spell; every spell is a phrase in the language you're learning. Say it well and it lands hard. Mumble it and it backfires. Eight floors, one life, a branching map, and words you master stay mastered across runs.
 
-**Tracks:** Most Entertaining (Jester's Court) · Best Use of Gemini API · Best Novice · Best Pitch
+**Tracks:** Most Entertaining (Jester's Court) · Best Use of Gemini API
 
 ## Run it
 
