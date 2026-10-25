@@ -8,7 +8,7 @@
  */
 import { useEffect, type ReactElement } from "react";
 import {
-  Sigil, StatusBadge, STATUS_META, SpellCard, BreathPips, InkCounter, HpBar, Ruby, DOOR_META, INTENT_ICON, ELEMENT_HEX, PALETTE,
+  Sigil, StatusBadge, STATUS_META, SpellCard, BreathPips, InkCounter, Ruby, DOOR_META, INTENT_ICON, ELEMENT_HEX, PALETTE,
   type Element, type StatusId, type IntentId, type NodeKind,
 } from "@/components/fx";
 import { LANGS, elementLabel, NODE_LABEL, INTENT_NAMES, localName, type LangId } from "@/lib/lang";
@@ -135,7 +135,7 @@ export default function Handbook({ lang, onClose }: HandbookProps) {
           <Row icon={<span className="font-display text-2xl text-vellum">{HAND_SIZE}</span>} title="Hand and end of turn">
             {`You draw ${HAND_SIZE} cards a turn. End turn (E) discards what you did not play, except Retain cards; then the enemy acts and your breath refills.`}
           </Row>
-          <Row icon={<HpBar value={52} max={START_HP} className="w-14" />} title="Life">
+          <Row icon={<span className="mt-1.5 block h-2 w-12 overflow-hidden rounded-full bg-black/40"><span className="block h-2 w-9 rounded-full bg-moss" /></span>} title="Life">
             {`${START_HP} to start. At 0 the run ends. A Rest heals 30 %; regen and some shields mend a little.`}
           </Row>
           <Row icon={<InkCounter value={30} />} title="Ink">
@@ -147,7 +147,7 @@ export default function Handbook({ lang, onClose }: HandbookProps) {
           <Row icon={<span className="flex gap-1">{[0, 1, 2].map((i) => <span key={i} className={`h-2 w-5 rounded-full ${i < 2 ? "bg-ember" : "bg-white/10"}`} />)}</span>} title="Resonance">
             {`${RESONANCE_AT} casts in a row at 80 % or better charge a guaranteed critical hit (×1.5) on the next cast.`}
           </Row>
-          <Row icon={<span className="text-xs text-vellum2">Redraw (1 left)</span>} title="Redraw">
+          <Row icon={<span className="rounded-full bg-white/5 px-2 py-1 text-xs text-vellum">Redraw</span>} title="Redraw">
             One free new incantation per turn for the selected card, no penalty. Some relics add more.
           </Row>
           <Row icon={<span className="font-display text-base text-vellum">Floor 1 of {FLOORS}</span>} title="Floors">
