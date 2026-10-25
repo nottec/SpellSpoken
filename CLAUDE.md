@@ -16,7 +16,7 @@ Eight floors, one life, a branching map, a deck, breath, statuses and element re
 ## Stack
 
 Next.js 15 (App Router) + React 19 + TypeScript + Tailwind 3. Dependencies: `pinyin-pro`; dev: `tsx`.
-Run: `npm install && npm run dev` (Chrome, allow mic). `npm run build` must pass before any commit; `npm run check` (22 engine assertions) and `npm run sim` (balance) should too.
+Run: `npm install && npm run dev` (Chrome, allow mic). `npm run build` must pass before any commit; `npm run check` (30 engine + 11 scoring assertions) and `npm run sim` (balance) should too.
 Deploy: Vercel, env vars `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MODEL_LITE` (comma-separated fallback lists), optional `GEMINI_TIMEOUT_MS`.
 
 ## Layout
@@ -25,32 +25,34 @@ Deploy: Vercel, env vars `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_MODEL_LITE` (
 components/Game.tsx                 orchestrator: run, language, lexicon, mastery, saved runs (per language), vocab growth once per floor, Eco's context
 components/screens/Battle.tsx       battle: hand, incantation, cast flow, verdict, enemy panel; helpers in screens/battle/*, copy in battle/copy.ts
 components/screens/*.tsx            Title, MapScreen, RewardScreen, RestScreen, EventScreen (trials), MerchantScreen, End, DeckPicker, RunHeader
-components/fx/*                     visual primitives (13 SVG enemy sprites, SpellCard, BreathPips, HpBar, StatusBadge, Burst, VuMeter, DoorCard, PathStrip…); README.md inside; gallery at /dev/fx
+components/fx/*                     visual primitives (13 SVG enemy sprites, SpellCard with keyword tags, Ruby/withPinyin, StageFx strikes + callouts + shake, IntentBadge, SfxToggle, BreathPips, HpBar, StatusBadge, VuMeter, DoorCard, PathStrip…); README.md inside; gallery at /dev/fx
 components/hooks/useSpeechCapture.ts  hook over captureCast (listening, level, start/stop)
 components/Mentor.tsx               "Eco", the pulsing orb mentor (Socratic, never gives the answer)
-lib/engine.ts                       the whole game, pure: breath/deck turns, castCard/endTurn, statuses, chain + reactions, map flow, rewards, rest, events, merchant
+lib/engine.ts                       the whole game, pure: breath/deck turns, castCard/endTurn, keyword cards (Exhaust/Retain/Draw/Detonate/Tailwind via cardCost/cardTags), statuses, chain + reactions, element-weighted offers, map flow, rewards, rest, events, merchant; RUN_VERSION
 lib/map.ts                          seeded 8-floor map generation
-lib/scoring.ts                      pure scoring: Spanish word/char similarity; Mandarin pinyin-syllable similarity with tone credit
-lib/lexicon.ts · lib/lang.ts        lexicon + mastery per language; LangConfig and localized labels (localName, elementLabel, nodeLabel)
-lib/speech.ts                       captureCast(): silence vs miss, stop() keeps what was heard, timeouts that wait for the final result, level meter, TTS
+lib/scoring.ts                      pure scoring: similarity (Spanish words / Mandarin pinyin syllables with tone credit), repetition-tolerant matchScore, bestMatch with alternative-rank and confidence factors; lib/scoring.check.ts
+lib/lexicon.ts · lib/lang.ts        lexicon + mastery per language; LangConfig and localized labels (localName, elementLabel, nodeLabel, intentName, localizeLine for the engine's log)
+lib/speech.ts                       captureCast(): early accept on a matching interim, idle stop after speech, live transcript, stop() keeps what was heard, silence vs miss, level meter, TTS; TIMEOUT_BY_LEVEL / IDLE_BY_LEVEL / ACCEPT_AT
+lib/sfx.ts                          synthesized WebAudio cues per element and event; mute toggle persisted in localStorage `incantation.sfx`
 lib/gemini.ts                       caller: flash + lite model lists, thinkingBudget 0, timeouts, retries, per-model 429 cooldown, status
 lib/sim.ts · lib/engine.check.ts    balance bot and assertions
 app/api/{feedback,mentor,vocab,health}/route.ts   coaching · Eco · lexicon growth · diagnostics (?ping=1 lists usable models)
-data/spells.ts (28 cards) · enemies.ts (13) · relics.ts (17) · events.ts (8) · vocab.es.ts / vocab.zh.ts (169 each)   all bilingual
+data/spells.ts (40 cards) · enemies.ts (13) · relics.ts (22) · events.ts (8) · vocab.es.ts / vocab.zh.ts (169 each)   all bilingual
 docs/DESIGN.md (design contract + final engine API + balance) · docs/SPEECH_GEMINI.md (speech/Gemini guide for the UI)
 ```
 
 ## Core rules (keep these invariant unless asked)
 
 - Score 0–1 from `lib/scoring.ts`. Backfire below 0.45 (`BACKFIRE_BELOW`): `2 + 2 × tier` self-damage, breath still spent, grudge. Grudge if < 0.70.
-- Turn: 3 breath (`BASE_BREATH`), hand of 4 (`HAND_SIZE`), card cost = tier (Susurro/Foco/Inspiración cost 0); `endTurn` after casting; unplayed cards are discarded. Auto end-turn only when `!canAct(run)` (a 0-cost card keeps the turn open).
+- Turn: 3 breath (`BASE_BREATH`), hand of 5 (`HAND_SIZE`), 10-card starter deck. Cost is breath and is decoupled from tier (tier = phrase difficulty): most cards cost their tier, some tier-1s cost 2, some tier-2s cost 1; Susurro/Foco/Pacto/Señal/Inspiración cost 0. Always read cost through `cardCost(run, card)` (Tailwind/Veleta discounts). `endTurn` discards unplayed cards except Retain; auto end-turn only when `!canAct(run)` (a 0-cost card keeps the turn open).
+- Keywords (`cardTags`, all spelled out by `cardDesc`): Exhaust (gone for the battle, back after it, spent even on a backfire), Retain, Draw N (before the card is discarded), Detonate (consume every burn stack for +3 each), per-stack and vs-status bonuses (`previewCast().bonusText`), Tailwind (next costed card −1 this turn), sacrifice (`castBlocker` → "not enough life"). Offers lean 60 % toward elements already in the deck (`ELEMENT_OFFER_BIAS`), never all of them. `RUN_VERSION = 2`: Game.tsx drops older saves.
 - Effect = power × (0.5 + score) × weak ×2 / resist ×½ / underTier ×½ × mastered ×1.15 × crit ×1.5 × chain (+15 %/step, max +45 %) × reaction × exposed ×1.5; strength adds flat power.
 - Statuses: enemy burn / chill / stagger / weak / exposed / armor; player focus / silence / strength / regen / armor. Reactions: wind→fire wildfire, fire→water steam, water→wind storm, shadow→light eclipse, light→shadow dusk.
 - Resonance: 3 consecutive casts ≥ 0.80 → guaranteed crit (Diapasón: 2). Shields halve each enemy phase. Mastery: 3 casts at ≥ 0.85 avg, per language in localStorage.
 - Map: floor 0 fight, floor 3 boss, floor 7 final; floors 1,2,4,5,6 offer 2–3 doors (fight/elite/rest/event/merchant). Ink = enemy.ink × (0.75 + 0.5 × avg score).
 - `castCard` throws when a card is not castable — gate with `castBlocker`/`canAct`. Shop/event refusals return the same run reference. Events finish in stage "done" and the UI calls `advance`.
 - Phrase drawing (`drawPhrase`): level = tier (+1 if cursed) or `{ level }` for trials; themes; skip last 5; 40 % grudge redraw. The battle caches one phrase per card per turn; one free redraw per turn (+relic).
-- Speech: silence/timeout is **not** a cast (no breath, no damage); Stop still scores; the mic is released on every exit path.
+- Speech: silence/timeout is **not** a cast (no breath, no damage); Stop still scores; the mic is released on every exit path. Listening ends early when an interim result already matches the phrase (`ACCEPT_AT` 0.9) and `IDLE_BY_LEVEL` (1.3 / 1.8 / 2.3 s) after the player falls silent, so a one-syllable 心 never waits to be said twice; the live transcript is shown while listening. Scoring: `bestMatch` takes the best sliding window (心心 for 心 scores 1.0), multiplies by the alternative's rank (1 / 0.88 / 0.82 / 0.78) and by `0.75 + 0.25 × confidence` when Chrome gives one, so only the recognizer's top guess with confidence ≥ 0.6 can be Perfecto. Event trials use the same policy.
 - Gemini: feedback once per cast (skipped ≥ 0.97), vocab once per floor, mentor on demand. All failures fall back to template text with a `why`; the game never blocks on Gemini.
 - UI copy is English; in-world names (cards, enemies, relics, events, elements, grades) are in the target language via `cardName`/`localName`/… Never italicize Chinese (`LANGS[lang].italic`).
 
@@ -64,18 +66,19 @@ docs/DESIGN.md (design contract + final engine API + balance) · docs/SPEECH_GEM
 
 ## Balance reference (`npm run sim`, 400 runs per p)
 
-95 % pronunciation ≈ 64 % win, 85 % ≈ 48 %, 75 % ≈ 34 %, 65 % ≈ 18 %, 50 % ≈ 0 %. ~41–46 casts and ~34 distinct words per run.
-Knobs: enemy `hp`/`attack` (data/enemies.ts), `BALANCE.floorScale`, card `power`/`cost`, prices, `START_HP` (lib/engine.ts). If the live demo feels too hard, lower enemy `attack` ~10 % and re-run the sim.
+95 % pronunciation ≈ 65 % win, 85 % ≈ 55 %, 75 % ≈ 34 %, 65 % ≈ 13 %, 50 % ≈ 0 %. ~55 casts and ~40 distinct words per run; the whole hand is affordable on only ~12 % of turns, ~2.9 casts per turn, ~2 cards left unplayed.
+Knobs: enemy `hp`/`attack` (data/enemies.ts), `BALANCE.floorScale`, card `power`/`cost`, prices, `START_HP` (lib/engine.ts); Foco's cost (0 → 1) lowers casts per turn. If the live demo feels too hard, lower enemy `attack` ~10 % and re-run the sim.
 
 ## Style
 
 - Dark "candlelit grimoire" palette (tailwind.config.ts: ink/dusk/vellum/ember/moss/blood + element colors). Fraunces for display, Manrope for UI, Noto Serif SC for CJK. No italics on Chinese text.
-- The incantation is the hero of the battle screen; keep everything else quiet. One motion moment (the ember breathe while listening) plus the sprite idles.
+- The incantation is the hero of the battle screen. Motion lives over the enemy panel: element strikes, callouts (STEAM!, ×2), damage numbers, knockback and a short shake on crits (StageFx), each with a synthesized cue (lib/sfx.ts; 🔊 toggle, `prefers-reduced-motion` respected). Nothing covers the phrase for more than ~600 ms. The enemy's next move is a large IntentBadge: icon, number, "you'd lose N" after shield and armor.
+- Every Chinese string on screen carries pinyin (`Ruby` / `withPinyin`), including the engine's English log lines after `localizeLine`.
 - Copy is plain and in-world (Eco speaks like a spirit, never like a chatbot).
 
 ## Still to do before judging (priority order)
 
-1. Put the Gemini key in `.env.local` / Vercel and check `/api/health?ping=1`; test the live URL with a real mic in both languages, one full run each.
+1. Put the Gemini key in `.env.local` / Vercel and check `/api/health?ping=1`; test the live URL with a real mic in both languages, one full run each. Watch: 心 said once should close the mic within ~1 s and score 完美; said twice still 完美; a Spanish word read with English vowels should land in Bien or lower (if not, lower `confidenceFactor` in lib/scoring.ts); a sentence must never be cut at a pause (else raise `IDLE_BY_LEVEL[3]` in lib/speech.ts).
 2. Record the demo video: backfire → perfect reacting cast on an exposed enemy → Gemini coaching line → ask Eco "why did that fizzle?" → switch to 中文, cast with pinyin shown.
 3. Devpost write-up + tracks + video + repo + live link. Disclose AI tools.
 4. Pre-master a few words on the demo laptop so the title shows progress.
@@ -87,4 +90,5 @@ Knobs: enemy `hp`/`attack` (data/enemies.ts), `BALANCE.floorScale`, card `power`
 - Keep `lib/engine.ts`, `lib/map.ts`, `lib/scoring.ts` and `data/*` pure (no DOM, no fetch) so the sim and checks keep working.
 - `NEXT_PUBLIC_DEV_HOOK=1 npm run build` exposes `window.__incantation` (engine + setRun) in a production build for scripted QA; never set it on Vercel.
 - `C:\Users\alexw` is an accidental empty git repo; this project's repo is the folder itself. For parallel agents use manual `git worktree add` (the harness's worktree isolation fails here), and make sure no `next dev` worker is alive before a production build (it corrupts `.next`).
+- While a `next dev` runs in the main folder (someone testing), never `next build` there: `git checkout --detach master` in a worktree (e.g. `../wt-fx2`), build and QA from it, and kill the `next start` you launched afterwards.
 - Never put the API key anywhere but `.env.local` / Vercel env vars.
