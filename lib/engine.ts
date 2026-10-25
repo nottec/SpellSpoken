@@ -4,7 +4,7 @@
  * is the `rand` parameter used for crits and phrase draws. Every public function returns
  * a new Run (structuredClone) and never mutates its input. See docs/DESIGN.md §1–§8, §11.
  */
-import { spells, spellById, spellName, spellDesc, upgradedPower, isDamageKind, STACK_STATUSES, STATUS_LABEL, RARITY_WEIGHT, type Spell, type Element, type Status, type StatusId, type StatusApply } from "@/data/spells";
+import { spells, spellById, spellName, spellDesc, upgradedPower, sacrificeOf, isDamageKind, STACK_STATUSES, STATUS_LABEL, STATUS_ADJ, RARITY_WEIGHT, type Spell, type Element, type Status, type StatusId, type StatusApply } from "@/data/spells";
 import { enemyById, type EnemyDef, type Intent } from "@/data/enemies";
 import { relics, relicById, type Relic } from "@/data/relics";
 import { eventById, type EventEffect } from "@/data/events";
@@ -19,7 +19,9 @@ export type { Relic } from "@/data/relics";
 export { FLOORS } from "./map";
 
 /* ---------- constants (balance knobs) ---------- */
-export const HAND_SIZE = 4;
+/** Bump when a saved Run can no longer be loaded as-is; Game.tsx discards saves with another version. */
+export const RUN_VERSION = 2;
+export const HAND_SIZE = 5;
 export const BASE_BREATH = 3;
 export const START_HP = 70;
 export const START_INK = 30;
@@ -67,6 +69,7 @@ export type EventState = { id: string; stage: "choose" | "pick" | "done"; pendin
 export type RunStats = { casts: number; perfect: number; backfires: number; damage: number; scoreSum: number; turns: number; inkEarned: number; maxChain: number; reactions: number; elites: number };
 
 export type Run = {
+  version: number;                             // RUN_VERSION at creation
   seed: number; floor: number; map: MapNode[][]; path: number[];
   hp: number; maxHp: number; shield: number; ink: number;
   deck: Card[]; draw: string[]; hand: string[]; discard: string[];
@@ -83,6 +86,8 @@ export type Run = {
   shop?: Shop;
   log: string[];                               // last 20 human-readable lines, newest last
   perfectUsed: boolean;                        // perfectBreath relic already refunded this turn
+  exhausted: string[];                         // uids Exhausted this battle (out of draw/discard until finishBattle)
+  discount: number;                            // Tailwind: the next card with a cost pays this much less (reset each turn)
 };
 
 export type CastResult = {
@@ -95,17 +100,30 @@ export type CastResult = {
   gained: { breath?: number };
   killed: boolean; wordMastered: boolean; grudge: boolean;
   breathLeft: number;
+  // card depth
+  costPaid: number;              // breath actually spent (after Tailwind / relic discounts)
+  drawn: number;                 // cards drawn by this cast
+  exhausted: boolean;            // the card left the deck for the rest of the battle
+  consumed?: { status: StatusId; stacks: number };   // Detonate: what was removed from the enemy
+  bonusPower: number;            // flat power added by perStack / consume / perCast right now
+  sacrificed: number;            // life paid by a `sacrifice` card (0 on backfire)
+  vsBonus: boolean;              // the card's `vs` condition was met
 };
 
 export type TurnResult = {
   intent: Intent; staggered: boolean; hits: number; enemyHit: number; blocked: number; armorAbsorbed: number;
   enemyHealed: number; burnDamage: number; armorGained: number; cursed: boolean; silenced: boolean;
   thorns: number; regen: number; killed: boolean; dead: boolean;
+  retained: number;              // cards kept in hand (Retain keyword or Marcapáginas)
 };
 
 export type CastPreview = {
   affordable: boolean; silenced: boolean; weak: boolean; resist: boolean; underTier: boolean;
-  chain: number; reaction: ReactionId | null; mult: number;   // mult = everything except score, crit and mastery
+  chain: number; reaction: ReactionId | null; mult: number;   // mult = everything except score, crit and mastery (includes an active `vs` bonus)
+  cost: number;                  // breath this card costs right now (after discounts)
+  bonusPower: number;            // flat power the card gets right now from perStack / consume / perCast
+  bonusMult: number;             // the `vs` multiplier if its condition holds right now, else 1
+  bonusText: string | null;      // ready-made hint, e.g. "+18 from Burn", "detonate 6 Burn: +18", "×1.5 vs Chilled", "+8 from casts"
 };
 
 /* ---------- reactions ---------- */
@@ -152,6 +170,36 @@ export const cardName = (card: Card, lang: string) => spellName(spellOfCard(card
 export const cardDesc = (card: Card) => spellDesc(spellOfCard(card), card.up);
 export const handCards = (run: Run) => run.hand.map((uid) => cardOf(run, uid)!).filter(Boolean).map((card) => ({ card, spell: spellOfCard(card) }));
 export const currentNode = (run: Run): MapNode | undefined => run.map[run.floor]?.[run.path[run.floor]];
+/** Keyword badges for a card: "Exhaust", "Retain", "Draw N", "Tailwind", "Detonate". The rules text (`cardDesc`) spells them out. */
+export function cardTags(card: Card): string[] {
+  const s = spellOfCard(card), t: string[] = [];
+  if (s.exhaust) t.push("Exhaust");
+  if (s.retain) t.push("Retain");
+  if (s.draw) t.push(`Draw ${s.draw}`);
+  if (s.tailwind) t.push("Tailwind");
+  if (s.consume) t.push("Detonate");
+  return t;
+}
+/** Breath a spell costs right now: Tailwind / Veleta discounts apply to the next card that has a cost. */
+const costOf = (run: Run, spell: Spell) => (spell.cost <= 0 ? 0 : Math.max(0, spell.cost - (run.discount ?? 0)));
+/** Breath `card` costs right now (after discounts). The UI shows this instead of `spell.cost`. */
+export const cardCost = (run: Run, card: Card) => costOf(run, spellOfCard(card));
+/** Flat power a spell gets right now from its conditional keywords (perStack, consume, perCast). */
+function bonusPowerOf(run: Run, spell: Spell): { power: number; text: string | null; consumed: number } {
+  const e = run.enemy; let power = 0; const parts: string[] = []; let consumed = 0;
+  if (!isDamageKind(spell.kind)) return { power: 0, text: null, consumed: 0 };
+  if (spell.perStack && e) { const n = stacksOf(e.statuses, spell.perStack.status); if (n) { power += n * spell.perStack.power; parts.push(`+${n * spell.perStack.power} from ${STATUS_LABEL[spell.perStack.status]}`); } }
+  if (spell.consume && e) { const n = stacksOf(e.statuses, spell.consume.status); if (n) { consumed = n; power += n * spell.consume.power; parts.push(`detonate ${n} ${STATUS_LABEL[spell.consume.status]}: +${n * spell.consume.power}`); } }
+  if (spell.perCast) { const n = run.battleScores?.length ?? 0; if (n) { power += n * spell.perCast; parts.push(`+${n * spell.perCast} from casts`); } }
+  return { power, text: parts.length ? parts.join(", ") : null, consumed };
+}
+const vsHolds = (run: Run, spell: Spell) => !!spell.vs && !!run.enemy && hasStatus(run.enemy.statuses, spell.vs.status);
+/** structuredClone plus defaults for fields older saves lack (Game.tsx discards other RUN_VERSIONs, but be safe). */
+function clone(run: Run): Run {
+  const r = structuredClone(run);
+  r.exhausted ??= []; r.discount ??= 0;
+  return r;
+}
 /** Damage the enemy's next action would deal before block, armor and shield (0 for non-attacks). */
 export function intentDamage(e: Enemy): number {
   const i = nextIntent(e), base = e.attack * (e.charged ? 2 : 1) * (hasStatus(e.statuses, "weak") ? 0.75 : 1);
@@ -170,13 +218,14 @@ function addRelic(r: Run, id: string) {
 export function newRun(seed = Date.now() % 100000): Run {
   const r = rng(seed);
   const map = generateMap(r);
-  // three tier-1 attacks of three different elements, seeded
-  const attacks = shuffle(r, spells.filter((s) => s.tier === 1 && s.cost === 1 && isDamageKind(s.kind)));
+  // four basic tier-1 attacks of four different elements, seeded
+  const attacks = shuffle(r, spells.filter((s) => s.tier === 1 && s.cost === 1 && s.rarity === "common" && isDamageKind(s.kind)));
   const starters: Spell[] = [];
-  for (const s of attacks) if (starters.length < 3 && !starters.some((x) => x.element === s.element)) starters.push(s);
-  const hex = pick(r, spells.filter((s) => s.tier === 1 && s.kind === "hex"));
-  const deck: Card[] = [...starters, spellById("escudo"), spellById("aliento"), spellById("susurro"), hex].map((s, i) => ({ uid: `c${i + 1}`, spell: s.id, up: false }));
+  for (const s of attacks) if (starters.length < 4 && !starters.some((x) => x.element === s.element)) starters.push(s);
+  const hex = pick(r, spells.filter((s) => s.tier === 1 && s.kind === "hex" && s.cost >= 1));
+  const deck: Card[] = [...starters, spellById("escudo"), spellById("escudo"), spellById("aliento"), spellById("susurro"), hex, spellById("foco")].map((s, i) => ({ uid: `c${i + 1}`, spell: s.id, up: false }));
   return {
+    version: RUN_VERSION,
     seed, floor: 0, map, path: [],
     hp: START_HP, maxHp: START_HP, shield: 0, ink: START_INK,
     deck, draw: [], hand: [], discard: [],
@@ -187,6 +236,7 @@ export function newRun(seed = Date.now() % 100000): Run {
     grudges: [], recent: [], wordsSeen: [], battleScores: [],
     stats: { casts: 0, perfect: 0, backfires: 0, damage: 0, scoreSum: 0, turns: 0, inkEarned: 0, maxChain: 0, reactions: 0, elites: 0 },
     phase: "map", log: ["The grimoire opens."], perfectUsed: false,
+    exhausted: [], discount: 0,
   };
 }
 
@@ -221,19 +271,24 @@ export function spawnEnemy(id: string, floor: number): Enemy {
   return { ...def, hp, hpNow: hp, attack: Math.round(def.attack * s), step: 0, charged: false, statuses: [] };
 }
 
-function drawCards(r: Run, n: number) {
+/** Draw up to `n` cards; reshuffles the discard (seeded) when the draw pile runs dry. Exhausted cards are in neither pile. Returns how many were drawn. */
+function drawCards(r: Run, n: number): number {
+  let drawn = 0;
   for (let i = 0; i < n; i++) {
     if (!r.draw.length) {
       if (!r.discard.length) break;
       r.draw = shuffle(rng(subSeed(r, 11 + i)), r.discard); r.discard = [];
     }
-    r.hand.push(r.draw.pop()!);
+    r.hand.push(r.draw.pop()!); drawn++;
   }
+  return drawn;
 }
+/** Breath and redraws reset; Retained cards stay and the hand is filled back up to `handSizeOf`. */
 function newTurn(r: Run) {
   r.breath = r.maxBreath; r.redrawsLeft = 1 + sum(r, "redraws"); r.perfectUsed = false;
+  r.discount = has(r, "firstDiscount") ? 1 : 0;
   if (has(r, "turnFocus")) addStatus(r.statuses, "focus", 1, 99);
-  drawCards(r, handSizeOf(r));
+  drawCards(r, Math.max(0, handSizeOf(r) - r.hand.length));
 }
 
 /** Enter a battle against the current node's enemy (or `enemyId`). Shuffles the deck, draws a hand, breath = max. */
@@ -243,6 +298,7 @@ export function startBattle(run: Run, enemyId?: string): Run {
   if (!id) throw new Error("startBattle: no enemy here");
   r.enemy = spawnEnemy(id, r.floor);
   r.shield = 0; r.statuses = []; r.echoUsed = false; r.cursed = false; r.lastElement = null; r.chain = 0; r.battleScores = [];
+  r.exhausted = []; r.discount = 0;
   const armor = sum(r, "startArmor"); if (armor) addStatus(r.statuses, "armor", armor, 99);
   r.turn = 1;
   r.draw = shuffle(rng(subSeed(r, 3)), r.deck.map((c) => c.uid)); r.hand = []; r.discard = [];
@@ -258,8 +314,9 @@ export function castBlocker(run: Run, uid: string): string | null {
   if (!run.hand.includes(uid)) return "card not in hand";
   const card = cardOf(run, uid); if (!card) return "unknown card";
   const spell = spellOfCard(card);
-  if (spell.cost > run.breath) return "not enough breath";
+  if (costOf(run, spell) > run.breath) return "not enough breath";
   if (spell.tier === 3 && hasStatus(run.statuses, "silence")) return "silenced";
+  if (sacrificeOf(spell, card.up) >= run.hp) return "not enough life";
   return null;
 }
 export const canAct = (run: Run) => run.phase === "battle" && run.hand.some((uid) => !castBlocker(run, uid));
@@ -273,10 +330,21 @@ export function previewCast(run: Run, spell: Spell): CastPreview {
   const reaction = reactionFor(run.lastElement, spell.element);
   const chainMult = 1 + (0.15 + sum(run, "chainBonus")) * Math.min(chain - 1, 3);
   const reactionMult = reaction === "wildfire" ? 1.25 : reaction === "steam" ? 1.5 : 1;
+  const vs = vsHolds(run, spell);
+  const bonusMult = vs && isDamageKind(spell.kind) ? spell.vs!.mult ?? 1 : 1;
   const mult = isDamageKind(spell.kind)
-    ? chainMult * reactionMult * (weak ? 2 : 1) * (resist ? 0.5 : 1) * (underTier ? 0.5 : 1) * (e && hasStatus(e.statuses, "exposed") ? 1.5 : 1)
+    ? chainMult * reactionMult * bonusMult * (weak ? 2 : 1) * (resist ? 0.5 : 1) * (underTier ? 0.5 : 1) * (e && hasStatus(e.statuses, "exposed") ? 1.5 : 1)
     : chainMult;
-  return { affordable: run.phase === "battle" && spell.cost <= run.breath, silenced: spell.tier === 3 && hasStatus(run.statuses, "silence"), weak, resist, underTier, chain, reaction, mult };
+  const bonus = bonusPowerOf(run, spell);
+  const texts: string[] = [];
+  if (bonus.text) texts.push(bonus.text);
+  if (vs && spell.vs!.mult) texts.push(`×${spell.vs!.mult} vs ${STATUS_ADJ[spell.vs!.status]}`);
+  if (vs && spell.vs!.drain) texts.push(`drains ${spell.vs!.drain >= 1 ? "all" : `${Math.round(spell.vs!.drain * 100)}%`} vs ${STATUS_ADJ[spell.vs!.status]}`);
+  const cost = costOf(run, spell);
+  return {
+    affordable: run.phase === "battle" && cost <= run.breath, silenced: spell.tier === 3 && hasStatus(run.statuses, "silence"), weak, resist, underTier, chain, reaction, mult,
+    cost, bonusPower: bonus.power, bonusMult, bonusText: texts.length ? texts.join(", ") : null,
+  };
 }
 
 /** Spend a free phrase redraw. Returns the run unchanged when none are left. */
@@ -307,10 +375,13 @@ export function drawPhrase(run: Run, spellOrLevel: Spell | { level: 1 | 2 | 3 },
 export function castCard(run: Run, uid: string, word: Vocab, rawScore: number, ms: number, wordMastered: boolean, rand = Math.random): { run: Run; result: CastResult } {
   const why = castBlocker(run, uid);
   if (why) throw new Error(`castCard: ${why}`);
-  const r = structuredClone(run);
+  const r = clone(run);
   const e = r.enemy!;
   const card = cardOf(r, uid)!, spell = spellOfCard(card);
   const dmgKind = isDamageKind(spell.kind);
+  const costPaid = costOf(r, spell);
+  let drawn = 0, sacrificed = 0, bonusPower = 0, vsBonus = false;
+  let consumed: CastResult["consumed"];
 
   // 1. score (focus is consumed either way)
   const focus = hasStatus(r.statuses, "focus");
@@ -340,16 +411,21 @@ export function castCard(run: Run, uid: string, word: Vocab, rawScore: number, m
     r.lastElement = null; r.chain = 0; chain = 0; reaction = null;
     log(r, `${name} fizzles and burns you for ${selfDamage}.`);
   } else {
-    // 3–4. multipliers and crit
-    const power = effectivePower(card) + (dmgKind ? stacksOf(r.statuses, "strength") : 0);
+    // 3–4. multipliers and crit (conditional keywords read the enemy as it is before this cast's statuses)
+    const bonus = bonusPowerOf(r, spell); bonusPower = bonus.power;
+    vsBonus = vsHolds(r, spell);
+    const power = effectivePower(card) + (dmgKind ? stacksOf(r.statuses, "strength") + bonusPower : 0);
     const chainMult = 1 + (0.15 + sum(r, "chainBonus")) * Math.min(chain - 1, 3);
     const reactionMult = reaction === "wildfire" ? 1.25 : reaction === "steam" ? 1.5 : 1;
+    const vsMult = vsBonus && dmgKind ? spell.vs!.mult ?? 1 : 1;
     const critChance = (score >= 0.85 && ms < 2500 ? 0.3 : 0.05) + sum(r, "critBonus");
     crit = resonant || reaction === "eclipse" || rand() < critChance;
     const base = (0.5 + score) * (wordMastered ? 1.15 : 1) * (crit ? 1.5 : 1) * chainMult;
+    if (spell.sacrifice) { sacrificed = Math.min(sacrificeOf(spell, card.up), r.hp - 1); r.hp -= sacrificed; }
     // 5. kind effects
     if (dmgKind) {
-      const mult = base * (weak ? 2 : 1) * (resist ? 0.5 : 1) * (underTier ? 0.5 : 1) * (exposed ? 1.5 : 1) * reactionMult;
+      if (spell.consume && bonus.consumed) { e.statuses = dropStatus(e.statuses, spell.consume.status); consumed = { status: spell.consume.status, stacks: bonus.consumed }; }
+      const mult = base * (weak ? 2 : 1) * (resist ? 0.5 : 1) * (underTier ? 0.5 : 1) * (exposed ? 1.5 : 1) * reactionMult * vsMult;
       damage = Math.round(power * mult);
       if (has(r, "echo") && !r.echoUsed) { echoDamage = Math.round(damage * 0.5); r.echoUsed = true; }
       const armor = statusOf(e.statuses, "armor");
@@ -361,11 +437,13 @@ export function castCard(run: Run, uid: string, word: Vocab, rawScore: number, m
       const total = damage + echoDamage;
       e.hpNow = Math.max(0, e.hpNow - total); r.stats.damage += total;
       let ls = sum(r, "lifesteal") + (spell.kind === "drain" ? spell.drain ?? 0.5 : 0);
+      if (vsBonus && spell.vs!.drain) ls = Math.max(ls, spell.vs!.drain);
       if (reaction === "dusk") ls = Math.max(ls, 1);
       ls = Math.min(1, ls);
       if (ls > 0 && total > 0) { healed = Math.min(Math.round(total * ls), r.maxHp - r.hp); r.hp += healed; }
     } else if (spell.kind === "shield") { shielded = Math.round(power * base); r.shield += shielded; }
     else if (spell.kind === "heal") { healed = Math.min(Math.round(power * base), r.maxHp - r.hp); r.hp += healed; }
+    if (spell.also?.heal) { const h = Math.min(Math.round(spell.also.heal * base), r.maxHp - r.hp); r.hp += h; healed += h; }
     if (spell.gain?.breath) { r.breath += spell.gain.breath; gained.breath = spell.gain.breath; }
     // statuses: steam clears burn first, then this cast's statuses, then storm's stagger
     if (reaction === "steam") e.statuses = dropStatus(e.statuses, "burn");
@@ -378,6 +456,8 @@ export function castCard(run: Run, uid: string, word: Vocab, rawScore: number, m
       applied.push({ status: a.status, stacks, turns, target: a.target });
     });
     if (reaction === "storm") { addStatus(e.statuses, "stagger", 1, 99); applied.push({ status: "stagger", stacks: 1, turns: 99, target: "enemy" }); }
+    const every = sum(r, "castStrength");
+    if (every > 0 && (r.battleScores.length + 1) % every === 0) { addStatus(r.statuses, "strength", 1, 99); applied.push({ status: "strength", stacks: 1, turns: 99, target: "self" }); }
     // 6. bookkeeping
     if (score >= 0.9) r.stats.perfect++;
     if (score < GRUDGE_BELOW && !r.grudges.includes(word.id)) { r.grudges.push(word.id); grudge = true; }
@@ -386,22 +466,32 @@ export function castCard(run: Run, uid: string, word: Vocab, rawScore: number, m
     r.lastElement = spell.element; r.chain = chain; r.stats.maxChain = Math.max(r.stats.maxChain, chain);
     if (reaction) r.stats.reactions++;
     const tail = applied.map(fmtApplied).join(", ");
-    const effect = dmgKind ? `lands for ${damage}${echoDamage ? ` and echoes for ${echoDamage}` : ""}${armorAbsorbed ? ` (${armorAbsorbed} absorbed by armor)` : ""}${healed ? `, draining ${healed}` : ""}`
-      : spell.kind === "shield" ? `raises ${shielded} shield` : spell.kind === "heal" ? `mends ${healed}` : gained.breath ? `gives ${gained.breath} breath` : "takes hold";
+    const effect = dmgKind ? `lands for ${damage}${echoDamage ? ` and echoes for ${echoDamage}` : ""}${armorAbsorbed ? ` (${armorAbsorbed} absorbed by armor)` : ""}${consumed ? `, detonating ${consumed.stacks} ${STATUS_LABEL[consumed.status].toLowerCase()}` : ""}${healed ? `, draining ${healed}` : ""}`
+      : spell.kind === "shield" ? `raises ${shielded} shield${healed ? ` and mends ${healed}` : ""}` : spell.kind === "heal" ? `mends ${healed}` : gained.breath ? `gives ${gained.breath} breath${sacrificed ? ` for ${sacrificed} life` : ""}` : "takes hold";
     log(r, `${name}${card.up ? "+" : ""} ${effect}${crit ? ", critical" : ""}${reaction ? ` — ${reaction}` : ""}.${tail ? ` ${tail}.` : ""}`);
   }
   r.stats.casts++; r.stats.scoreSum += score; r.battleScores.push(score);
 
-  // 7. breath and the card
-  r.breath -= spell.cost;
-  if (!backfire && score >= 0.95 && has(r, "perfectBreath") && !r.perfectUsed && spell.cost > 0) { r.breath += 1; r.perfectUsed = true; gained.breath = (gained.breath ?? 0) + 1; }
-  r.hand = r.hand.filter((u) => u !== uid); r.discard.push(uid);
+  // 7. breath and the card: pay (a discount is consumed by the first card that has a cost), Exhaust or discard, then Draw / Tailwind
+  r.breath -= costPaid;
+  if (spell.cost > 0 && r.discount > 0) r.discount = 0;
+  if (!backfire && score >= 0.95 && has(r, "perfectBreath") && !r.perfectUsed && costPaid > 0) { r.breath += 1; r.perfectUsed = true; gained.breath = (gained.breath ?? 0) + 1; }
+  r.hand = r.hand.filter((u) => u !== uid);
+  if (!backfire) {
+    if (spell.draw) drawn = drawCards(r, spell.draw + sum(r, "drawBonus"));   // before the card reaches the discard, so it can never draw itself
+    if (spell.tailwind) r.discount = Math.max(r.discount, spell.tailwind);
+  }
+  if (spell.exhaust) {
+    r.exhausted.push(uid);
+    if (has(r, "exhaustBreath")) { r.breath += 1; gained.breath = (gained.breath ?? 0) + 1; }
+  } else r.discard.push(uid);
 
   const killed = e.hpNow <= 0;
   if (r.hp <= 0) { r.phase = "dead"; log(r, "Your own words undo you."); }
   else if (killed) finishBattle(r);
 
-  return { run: r, result: { score, backfire, crit, resonant, weak, resist, underTier, exposed, chain, reaction, damage, echoDamage, armorAbsorbed, selfDamage, healed, shielded, applied, gained, killed, wordMastered, grudge, breathLeft: r.breath } };
+  return { run: r, result: { score, backfire, crit, resonant, weak, resist, underTier, exposed, chain, reaction, damage, echoDamage, armorAbsorbed, selfDamage, healed, shielded, applied, gained, killed, wordMastered, grudge, breathLeft: r.breath,
+    costPaid, drawn, exhausted: !!spell.exhaust, consumed, bonusPower, sacrificed, vsBonus } };
 }
 
 /* ---------- enemy phase ---------- */
@@ -409,10 +499,17 @@ export function castCard(run: Run, uid: string, word: Vocab, rawScore: number, m
 export function endTurn(run: Run, rand: () => number = Math.random): { run: Run; result: TurnResult } {
   void rand;
   if (run.phase !== "battle" || !run.enemy) throw new Error("endTurn: not in battle");
-  const r = structuredClone(run);
+  const r = clone(run);
   const e = r.enemy!;
-  const res: TurnResult = { intent: nextIntent(e), staggered: false, hits: 0, enemyHit: 0, blocked: 0, armorAbsorbed: 0, enemyHealed: 0, burnDamage: 0, armorGained: 0, cursed: false, silenced: false, thorns: 0, regen: 0, killed: false, dead: false };
-  r.discard.push(...r.hand); r.hand = [];
+  const res: TurnResult = { intent: nextIntent(e), staggered: false, hits: 0, enemyHit: 0, blocked: 0, armorAbsorbed: 0, enemyHealed: 0, burnDamage: 0, armorGained: 0, cursed: false, silenced: false, thorns: 0, regen: 0, killed: false, dead: false, retained: 0 };
+  // Retain keeps its cards; Marcapáginas keeps the costliest other one; the rest are discarded
+  const keep = r.hand.filter((u) => !!spellOfCard(cardOf(r, u)!).retain);
+  if (has(r, "retainOne")) {
+    const rest = r.hand.filter((u) => !keep.includes(u)).map((u) => cardOf(r, u)!);
+    const top = rest.reduce<Card | null>((b, c) => (!b || spellOfCard(c).cost > spellOfCard(b).cost || (spellOfCard(c).cost === spellOfCard(b).cost && effectivePower(c) > effectivePower(b)) ? c : b), null);
+    if (top) keep.push(top.uid);
+  }
+  r.discard.push(...r.hand.filter((u) => !keep.includes(u))); r.hand = keep; res.retained = keep.length;
   r.stats.turns++;
 
   // burn
@@ -468,13 +565,33 @@ function tierWeights(floor: number): [number, number, number] {
   if (floor <= 4) return [0.2, 0.65, 0.15];
   return [0, 0.5, 0.5];
 }
-function rollCards(r: () => number, floor: number, n: number): Spell[] {
+/** Elements in the deck weighted by card count, so offers lean toward what the deck already does. */
+const deckElements = (deck: Card[]): { el: Element; n: number }[] => {
+  const m = new Map<Element, number>();
+  for (const c of deck) { const el = spellOfCard(c).element; m.set(el, (m.get(el) ?? 0) + 1); }
+  return [...m].map(([el, n]) => ({ el, n }));
+};
+export const ELEMENT_OFFER_BIAS = 0.6;
+/**
+ * Roll `n` distinct card offers for `floor`. With a `deck`, each slot leans ELEMENT_OFFER_BIAS toward an element the
+ * deck already holds (weighted by how many cards share it); the last slot is forced off-element when the others
+ * all matched and some element is still missing, so there is always a way out of a build.
+ */
+function rollCards(r: () => number, floor: number, n: number, deck: Card[] = []): Spell[] {
   const w = tierWeights(floor), out: Spell[] = []; let tier2 = 0;
+  const own = deckElements(deck), missing = (["fire", "water", "wind", "shadow", "light"] as Element[]).filter((el) => !own.some((o) => o.el === el));
   for (let i = 0; i < n * 10 && out.length < n; i++) {
     let tier = weightedPick(r, [1, 2, 3], w);
     if (floor <= 1 && tier === 2 && tier2 >= 1) tier = 1;
-    const pool = spells.filter((s) => s.tier === tier && !out.includes(s));
+    let pool = spells.filter((s) => s.tier === tier && !out.includes(s));
     if (!pool.length) continue;
+    const lastSlot = out.length === n - 1, allOwn = out.every((s) => own.some((o) => o.el === s.element));
+    if (own.length && missing.length && lastSlot && allOwn) {
+      const off = pool.filter((s) => missing.includes(s.element)); if (off.length) pool = off;
+    } else if (own.length && r() < ELEMENT_OFFER_BIAS) {
+      const el = weightedPick(r, own, own.map((o) => o.n)).el;
+      const same = pool.filter((s) => s.element === el); if (same.length) pool = same;
+    }
     const s = weightedPick(r, pool, pool.map((x) => RARITY_WEIGHT[x.rarity]));
     out.push(s); if (s.tier === 2) tier2++;
   }
@@ -488,12 +605,13 @@ function finishBattle(r: Run) {
   const ink = Math.round(e.ink * (0.75 + 0.5 * avg) * (1 + sum(r, "inkBonus")));
   r.ink += ink; r.stats.inkEarned += ink;
   r.statuses = []; r.shield = 0; r.hand = []; r.draw = []; r.discard = []; r.cursed = false;
+  r.exhausted = []; r.discount = 0;                                   // exhausted cards come back after the battle
   if (e.kind === "elite" || e.kind === "boss") r.stats.elites++;
   log(r, `${e.name} falls.${ink ? ` +${ink} ink.` : ""}`);
   if (e.kind === "final" || currentNode(r)?.kind === "final") { r.phase = "won"; return; }
   const rr = rng(subSeed(r, 7));
   const withRelics = e.kind === "elite" || e.kind === "boss";
-  r.rewards = { cards: rollCards(rr, r.floor, 3), relics: withRelics ? rollRelics(rr, r, 3) : [], ink, cardTaken: false, relicTaken: false };
+  r.rewards = { cards: rollCards(rr, r.floor, 3, r.deck), relics: withRelics ? rollRelics(rr, r, 3) : [], ink, cardTaken: false, relicTaken: false };
   r.phase = "reward";
 }
 /** Resolve the battle as won (ink, rewards, phase). Normally called by the engine when the enemy dies. */
@@ -559,7 +677,7 @@ function applyEffects(r: Run, effects: EventEffect[]): string[] {
       case "ink": r.ink += f.amount; out.push(f.amount >= 0 ? `+${f.amount} ink.` : `Paid ${-f.amount} ink.`); break;
       case "maxhp": r.maxHp = Math.max(1, r.maxHp + f.amount); r.hp = f.amount > 0 ? r.hp + f.amount : Math.min(r.hp, r.maxHp); out.push(f.amount >= 0 ? `+${f.amount} max life.` : `−${-f.amount} max life.`); break;
       case "relic": { const pool = relics.filter((x) => !r.relics.includes(x.id)); if (pool.length) { const x = pick(rr, pool); addRelic(r, x.id); out.push(`Found ${x.name}.`); } break; }
-      case "card": { const [s] = f.tier ? [weightedPick(rr, spells.filter((x) => x.tier === f.tier), spells.filter((x) => x.tier === f.tier).map((x) => RARITY_WEIGHT[x.rarity]))] : rollCards(rr, r.floor, 1); if (s) { addCard(r, s); out.push(`Learned ${s.name}.`); } break; }
+      case "card": { const [s] = f.tier ? [weightedPick(rr, spells.filter((x) => x.tier === f.tier), spells.filter((x) => x.tier === f.tier).map((x) => RARITY_WEIGHT[x.rarity]))] : rollCards(rr, r.floor, 1, r.deck); if (s) { addCard(r, s); out.push(`Learned ${s.name}.`); } break; }
       case "remove": if (r.deck.length > 1) { r.event!.pending = "remove"; out.push("Choose a card to forget."); } break;
       case "upgrade": if (r.deck.some((c) => !c.up)) { r.event!.pending = "upgrade"; out.push("Choose a card to upgrade."); } break;
       case "breath": r.maxBreath += f.amount; out.push(`+${f.amount} max breath.`); break;
@@ -603,7 +721,7 @@ export function pickEventCard(run: Run, uid: string): Run {
 /* ---------- merchant ---------- */
 function rollShop(r: Run): Shop {
   const rr = rng(subSeed(r, 17));
-  const cards = rollCards(rr, r.floor, 4).map((spell) => ({ spell, price: CARD_PRICE[spell.tier] + Math.round((rr() - 0.5) * 10), sold: false }));
+  const cards = rollCards(rr, r.floor, 4, r.deck).map((spell) => ({ spell, price: CARD_PRICE[spell.tier] + Math.round((rr() - 0.5) * 10), sold: false }));
   const shopRelics = rollRelics(rr, r, 2).map((relic) => ({ relic, price: RELIC_PRICE + Math.round((rr() - 0.5) * 20), sold: false }));
   return { cards, relics: shopRelics, removePrice: REMOVE_PRICE, upgradePrice: UPGRADE_PRICE };
 }
