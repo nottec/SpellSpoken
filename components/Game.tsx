@@ -32,6 +32,7 @@ import MerchantScreen from "./screens/MerchantScreen";
 import End from "./screens/End";
 import Mentor, { type MentorCtx } from "./Mentor";
 import Handbook from "./Handbook";
+import Sky from "./Sky";
 import { HANDBOOK_EVENT } from "@/components/fx";
 
 /* ---------- the saved run: one per language ---------- */
@@ -221,6 +222,7 @@ export default function Game() {
   if (!run) {
     return (
       <>
+        <Sky lexicon={lexicon} lang={lang} />
         <Title
           lang={lang} onLang={switchLang} lexicon={lexicon} words={words} saved={saved}
           onContinue={resume} onBegin={begin} micOk={micOk} useTyping={useTyping} onUseTyping={setUseTyping}
@@ -269,6 +271,7 @@ export default function Game() {
 
   return (
     <>
+      <Sky lexicon={lexicon} lang={lang} dim />
       {screen}
       <Mentor ctx={mentorCtx} nudge={backfires} tip={lastCast?.tip ? { text: lastCast.tip, key: `${lastCast.word.id}|${lastCast.heard}|${lastCast.tip}` } : null} />
       {handbook && <Handbook lang={lang} onClose={() => setHandbook(false)} />}
