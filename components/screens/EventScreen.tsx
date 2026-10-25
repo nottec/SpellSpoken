@@ -20,8 +20,8 @@ import type { Vocab } from "@/data/vocab";
 import RunHeader from "./RunHeader";
 import DeckPicker from "./DeckPicker";
 
-/** Budget to *start* speaking, by phrase level (DESIGN.md §9 / SPEECH_GEMINI.md §1). */
-const TIMEOUT_BY_LEVEL = { 1: 6000, 2: 8000, 3: 11000 } as const;
+import { TIMEOUT_BY_LEVEL, IDLE_BY_LEVEL, ACCEPT_AT } from "@/lib/speech";   // same capture policy as the battle (SPEECH_GEMINI.md §1)
+
 const LEVEL_WORD = { 1: "word", 2: "phrase", 3: "sentence" } as const;
 
 export type EventScreenProps = {
@@ -115,7 +115,12 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
     }
     if (mic.listening) { mic.stop(); return; }   // "press to cast, press again to finish"
     setNote(null);
-    const cap = await mic.start(L.speech, { timeoutMs: TIMEOUT_BY_LEVEL[trial.phrase.level] });
+    const target = trial.phrase;
+    const cap = await mic.start(L.speech, {
+      timeoutMs: TIMEOUT_BY_LEVEL[target.level],
+      idleMs: IDLE_BY_LEVEL[target.level],
+      accept: (alts) => bestMatch(alts, target.text, L.tokens).score >= ACCEPT_AT,
+    });
     switch (cap.reason) {
       case "silence":
       case "timeout":
@@ -229,7 +234,9 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
           {!useTyping && (
             <div className="mt-4 flex flex-col items-center gap-1">
               <VuMeter level={mic.level} active={mic.listening} />
-              <p className="h-4 text-xs text-vellum2">{mic.listening ? "Listening — say it now, then press Stop." : ""}</p>
+              <p className={`h-4 text-xs ${mic.heard ? "text-ember/80" : "text-vellum2"}`} role="status" aria-live="polite">
+                {mic.listening ? (mic.heard ? `hearing: ${mic.heard} …` : "Listening — say it now; it stops by itself, or press Stop.") : ""}
+              </p>
             </div>
           )}
           {note && (

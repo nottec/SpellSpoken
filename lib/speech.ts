@@ -70,6 +70,18 @@ export const GRACE_MS = 2500;
  * before this anyway.
  */
 export const DEFAULT_IDLE_MS = 2600;
+/**
+ * Per-level capture policy shared by the battle and event trials (docs/SPEECH_GEMINI.md §1).
+ * TIMEOUT: budget to start speaking. IDLE: once speech began, stop this long after the recognizer's
+ * last update (a word is over in a beat; a sentence may hold a breath between clauses; Chrome's own
+ * endpointer usually finalises sooner, this is the backstop for one-syllable Mandarin words it sits
+ * on). ACCEPT_AT: early accept fires when an interim result already scores this well against the
+ * phrase (rank 0, no confidence yet). It is the Perfecto floor, so only a clean reading ends the
+ * capture early; anything less waits for the final result and its confidence.
+ */
+export const TIMEOUT_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 6000, 2: 8000, 3: 11000 };
+export const IDLE_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 1300, 2: 1800, 3: 2300 };
+export const ACCEPT_AT = 0.9;
 
 /**
  * The alternatives a capture resolves with (pure; checked in lib/scoring.check.ts).

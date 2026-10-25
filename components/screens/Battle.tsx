@@ -23,7 +23,7 @@ import { isDamageKind } from "@/data/spells";
 import { LANGS, type LangId } from "@/lib/lang";
 import { bestMatch, similarityTyped } from "@/lib/scoring";
 import { isWordMastered, type WordStats } from "@/lib/lexicon";
-import { speak, type Capture } from "@/lib/speech";
+import { speak, TIMEOUT_BY_LEVEL, IDLE_BY_LEVEL, ACCEPT_AT, type Capture } from "@/lib/speech";
 import { playSfx } from "@/lib/sfx";
 import type { Vocab } from "@/data/vocab";
 import { useSpeechCapture } from "@/components/hooks/useSpeechCapture";
@@ -58,21 +58,7 @@ export type BattleProps = {
   onCast: (info: CastInfo) => void;       // after every scored cast; call again when the tip arrives
 };
 
-/** Budget to *start* speaking, by the drawn phrase's level (docs/SPEECH_GEMINI.md §1). */
-const TIMEOUT_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 6000, 2: 8000, 3: 11000 };
-/**
- * Once speech began, stop listening this long after the recognizer's last update (§1). A word
- * is over in a beat; a sentence may hold a breath between clauses, so it gets more. Chrome's own
- * endpointer usually finalises sooner; this is the backstop for when it does not (one-syllable
- * Mandarin words, or a word it cannot snap to anything).
- */
-const IDLE_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 1300, 2: 1800, 3: 2300 };
-/**
- * Early accept: stop as soon as an interim result already scores this well against the phrase
- * (rank 0, no confidence yet). It is the Perfecto floor, so only a clean reading ends the capture
- * early; anything less waits for the recognizer's final result and its confidence.
- */
-const ACCEPT_AT = 0.9;
+/** Capture timings and the early-accept threshold come from lib/speech.ts (TIMEOUT_BY_LEVEL, IDLE_BY_LEVEL, ACCEPT_AT). */
 /** At or above this the cast was clean: template praise, no feedback request (saves quota). */
 const PRAISE_AT = 0.97;
 const TYPED_MS = 1500;
