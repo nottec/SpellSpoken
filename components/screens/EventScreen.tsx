@@ -14,7 +14,8 @@ import { advance, drawPhrase, eventOptionAvailable, pickEventCard, resolveEvent,
 import { LANGS, type LangId } from "@/lib/lang";
 import type { WordStats } from "@/lib/lexicon";
 import { bestMatch, grade, similarityTyped } from "@/lib/scoring";
-import { speak } from "@/lib/speech";
+import { speak, type Capture } from "@/lib/speech";
+import { needsFallback, transcribeClip, withFallback } from "@/lib/transcribe";
 import { eventById, eventTitle, type EventOption } from "@/data/events";
 import type { Vocab } from "@/data/vocab";
 import RunHeader from "./RunHeader";
@@ -116,11 +117,18 @@ export default function EventScreen({ run, lang, lexicon, words, useTyping, onUs
     if (mic.listening) { mic.stop(); return; }   // "press to cast, press again to finish"
     setNote(null);
     const target = trial.phrase;
-    const cap = await mic.start(L.speech, {
+    let cap: Capture = await mic.start(L.speech, {
       timeoutMs: TIMEOUT_BY_LEVEL[target.level],
       idleMs: IDLE_BY_LEVEL[target.level],
       accept: (alts) => bestMatch(alts, target.text, L.tokens).score >= ACCEPT_AT,
     });
+    if (needsFallback(cap)) {
+      // same second ear as the battle: Gemini transcribes a voiced clip the recognizer ignored, the scorer decides
+      setNote("Chrome missed that short word; Gemini is listening to the clip…");
+      const ear = await transcribeClip(cap.audio!, lang);
+      setNote(null);
+      if (ear.transcript) cap = withFallback(cap, ear.transcript);
+    }
     switch (cap.reason) {
       case "silence":
       case "timeout":

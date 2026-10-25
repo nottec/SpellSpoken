@@ -59,7 +59,7 @@ speech is detected, the first of these ends the capture:
 | cause   | when                                                                                    | `reason`             |
 |---------|-----------------------------------------------------------------------------------------|----------------------|
 | early   | `accept(interimAlts)` returned true for an interim result (`cap.early === true`)        | `"result"`           |
-| idle    | no new recognizer event for `idleMs` (default 2600 ms) after speech began               | `"result"`, or `"timeout"` if nothing ever became words |
+| idle    | no new recognizer event for `idleMs` (default 2600 ms) after speech began; at least `NO_WORDS_IDLE_MS` (2000 ms) while speech is flagged but no words exist yet | `"result"`, or `"timeout"` if nothing ever became words |
 | final   | the recognizer finalised by itself                                                      | `"result"`           |
 | user    | `mic.stop()` / the Stop button / Space                                                  | `"stopped"` (or `"silence"` if nothing was heard) |
 | hard    | `maxMs` (default `timeoutMs + 6000`) elapsed                                            | `"result"`, or `"timeout"` with nothing heard |
@@ -88,6 +88,20 @@ inherits the final's confidence when the final merely grew out of it (the player
 "心" → "心心", "gato" → "gatos"); when the final disagrees outright it keeps confidence 0. So
 `bestMatch` can still pick the one clean 心 the capture stopped on, without ever bypassing the
 confidence factor.
+
+### The second ear (`lib/transcribe.ts` → `/api/transcribe`)
+
+Chrome's recognizer discards a lone syllable said once: for 塔 the dev log shows `speechstart` and
+then no words (`reason: "timeout"`, `alts: []`) or no speech event at all (`"silence"`), while the
+meter and the clip plainly hold a voice; said twice it returns 塔塔. So every capture carries `peak`,
+the loudest meter level seen, and when the recognizer returns no words with `peak ≥ FALLBACK_PEAK`
+(0.12) the screen posts `cap.audio` to `/api/transcribe`. Gemini transcribes the clip verbatim and is
+**never told the target**, so it cannot echo it; `withFallback(cap, transcript)` then makes the
+capture look like a recognizer result (`via: "gemini"`, rank 0, confidence `GEMINI_EAR_CONFIDENCE`
+0.85, so a clean 塔 scores 0.98) and the same `bestMatch` decides. Meanwhile the screen says
+"Chrome missed that short word; Gemini is listening to the clip…"; after `FALLBACK_TIMEOUT_MS` (8 s)
+or an empty answer the capture stays as it was (not a cast). Numerals come back as digits from both
+ears (diez → "10", 十 → "10"); `normalize` expands them (`esNumber`, `zhNumber`).
 
 ### Scoring (`lib/scoring.ts`, pure; the outcome is decided here before Gemini is called)
 
@@ -208,6 +222,20 @@ on any failure they answer with template text plus `why`.
 - Templates are language-aware: Mandarin ones name the syllable whose tone drifted (from the
   transcript vs the target) and quote the pinyin `reading`; Spanish ones talk vowels / rr / stress.
 - 400 if `target` or `score` is missing.
+
+### `/api/transcribe` — the second ear
+
+```jsonc
+// request
+{ "audio": { "b64": "...", "mime": "audio/webm" }, "lang": "zh" }
+// response
+{ "transcript": "塔", "mode": "gemini" | "none", "why"?: GeminiWhy | "bad-audio", "model"?: string }
+```
+
+- Called by `lib/transcribe.ts` only when the recognizer returned no words for a voiced clip. The
+  target phrase is not in the request, on purpose. `transcript: ""` with `mode: "none"` means nothing
+  usable came back and the screen treats the capture as before (not a cast). 400 without a clip,
+  413 above ~2 MB of base64.
 
 ### `/api/mentor` — Eco
 

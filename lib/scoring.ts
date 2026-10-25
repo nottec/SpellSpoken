@@ -25,15 +25,64 @@ function syllableDistance(a: string[], b: string[]) {
 
 export type TokenMode = "word" | "char";
 
-const ZH_DIGITS: Record<string, string> = { "0": "零", "1": "一", "2": "二", "3": "三", "4": "四", "5": "五", "6": "六", "7": "七", "8": "八", "9": "九", "10": "十", "100": "一百", "1000": "一千" };
+/* ---------- numerals: recognizers write spoken numbers as digits ("diez" → "10", 十 → "10") ---------- */
+
+const ES_UNITS = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete", "veintiocho", "veintinueve"];
+const ES_TENS = ["", "", "veinte", "treinta", "cuarenta", "cincuenta", "sesenta", "setenta", "ochenta", "noventa"];
+const ES_HUNDREDS = ["", "ciento", "doscientos", "trescientos", "cuatrocientos", "quinientos", "seiscientos", "setecientos", "ochocientos", "novecientos"];
+const ES_ORDINALS = ["", "primero", "segundo", "tercero", "cuarto", "quinto", "sexto", "séptimo", "octavo", "noveno", "décimo"];
+
+/** 0–9999 in Spanish words: 10 → "diez", 31 → "treinta y uno", 100 → "cien", 2500 → "dos mil quinientos". Larger stays digits. */
+export function esNumber(n: number): string {
+  if (!Number.isInteger(n) || n < 0 || n > 9999) return String(n);
+  if (n < 30) return ES_UNITS[n];
+  if (n < 100) { const t = Math.floor(n / 10), u = n % 10; return u ? `${ES_TENS[t]} y ${ES_UNITS[u]}` : ES_TENS[t]; }
+  if (n === 100) return "cien";
+  if (n < 1000) { const h = Math.floor(n / 100), r = n % 100; return r ? `${ES_HUNDREDS[h]} ${esNumber(r)}` : ES_HUNDREDS[h]; }
+  const k = Math.floor(n / 1000), r = n % 1000;
+  const thousands = k === 1 ? "mil" : `${esNumber(k)} mil`;
+  return r ? `${thousands} ${esNumber(r)}` : thousands;
+}
+
+/** 0–9999 in Chinese numerals: 10 → 十, 20 → 二十, 101 → 一百零一, 110 → 一百一十, 1000 → 一千. */
+export function zhNumber(n: number): string {
+  const D = "零一二三四五六七八九";
+  if (!Number.isInteger(n) || n < 0 || n > 9999) return String(n);
+  if (n < 10) return D[n];
+  if (n < 20) return "十" + (n % 10 ? D[n % 10] : "");
+  if (n < 100) return D[Math.floor(n / 10)] + "十" + (n % 10 ? D[n % 10] : "");
+  if (n < 1000) {
+    const h = Math.floor(n / 100), r = n % 100;
+    return D[h] + "百" + (r === 0 ? "" : r < 10 ? "零" + D[r] : r < 20 ? "一十" + (r % 10 ? D[r % 10] : "") : zhNumber(r));
+  }
+  const k = Math.floor(n / 1000), r = n % 1000;
+  return D[k] + "千" + (r === 0 ? "" : r < 100 ? "零" + zhNumber(r) : zhNumber(r));
+}
+
+/** Spanish: "1.000" → "1000", "3:30" → "tres y media", "1º" → "primero", then every number → words. */
+function expandEsDigits(s: string): string {
+  return s
+    .replace(/(\d{1,3})\.(\d{3})\b/g, "$1$2")
+    .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h: string, m: string) => {
+      const mm = Number(m);
+      return esNumber(Number(h)) + (mm === 0 ? "" : mm === 30 ? " y media" : mm === 15 ? " y cuarto" : ` y ${esNumber(mm)}`);
+    })
+    .replace(/\b(\d{1,2})\s?\.?[ºª°]/g, (_, n: string) => ES_ORDINALS[Number(n)] ?? n)
+    .replace(/\d+/g, (d) => esNumber(Number(d)));
+}
+
+/** Mandarin: 2 before a measure word is 两 (一天2次 → 一天两次); every other number becomes characters. */
+function expandZhDigits(s: string): string {
+  return s
+    .replace(/\b2(?=[个次百千万点天年岁块位只本杯件条张])/g, "两")
+    .replace(/\d+/g, (d) => zhNumber(Number(d)));
+}
 
 export function normalize(s: string, mode: TokenMode = "word") {
   if (mode === "char") {
-    // Recognizers often return digits for spoken numbers; map them back to characters.
-    const withDigits = s.replace(/\d+/g, (d) => ZH_DIGITS[d] ?? d);
-    return withDigits.replace(/[\s，。！？、：；“”‘’"',.!?:;…·\-]/g, "").trim();
+    return expandZhDigits(s).replace(/[\s，。！？、：；“”‘’"',.!?:;…·\-]/g, "").trim();
   }
-  return s
+  return expandEsDigits(s)
     .toLowerCase()
     .normalize("NFD").replace(/[̀-ͯ]/g, "")   // strip accents
     .replace(/[¡!¿?.,;:'"]/g, "")

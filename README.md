@@ -26,7 +26,7 @@ The game never blocks on Gemini. When a call fails, the coach falls back to temp
 1. **Get a key** in [Google AI Studio](https://aistudio.google.com/apikey) and put it in `.env.local` as `GEMINI_API_KEY=…` (on Vercel: Project → Settings → Environment Variables). Never commit it.
 2. **Know your tier.** A fresh key is on the **free tier**: in 2026 that is roughly 5–15 requests per minute and 100–250 per day, *per model*, and the limits belong to the key's **Google Cloud project**, not to the key (a second key in the same project shares the pool). To lift them, open that project in the Google Cloud console and link a **billing account**: the project moves to Tier 1 (hundreds of requests per minute, pay as you go, cents for a demo). A **Google AI Pro / Gemini Advanced** consumer subscription does **not** raise API quota; only billing on the Cloud project does.
 3. **Check the key** with `GET /api/health` (status only, no request to Google) and `GET /api/health?ping=1`, which lists the model names your key can use (`ping.list.models`) and makes one tiny `generateContent` call, returning Google's raw status and message (`ping.generate`). A 429 there is quota; a 404 means the name in `GEMINI_MODEL` is retired, so pick one from the list. `lastError` holds the most recent failure the game itself hit, and `hint` says it in plain English.
-4. **Request budget.** A cast costs one request (`/api/feedback`, skipped when the score is ≥ 97 %); lexicon growth (`/api/vocab`) is one request per floor, fired when the map comes up; Eco (`/api/mentor`) costs one per question. On a 429 the model enters a cooldown (from Google's `Retry-After` / "retry in Ns", default 30 s) and the routes answer `why: "cooldown"` without calling Google until it ends.
+4. **Request budget.** A cast costs one request (`/api/feedback`, skipped when the score is ≥ 97 %); lexicon growth (`/api/vocab`) is one request per floor, fired when the map comes up; Eco (`/api/mentor`) costs one per question. On a 429 the model enters a cooldown (from Google's `Retry-After` / "retry in Ns", default 30 s) and the routes answer `why: "cooldown"` without calling Google until it ends. A short word Chrome ignored costs one more: `/api/transcribe` (Gemini transcribes the clip, never told the target).
 
 | variable | default | purpose |
 |---|---|---|
@@ -75,6 +75,7 @@ lib/sfx.ts                       synthesized sound cues (WebAudio), mute toggle
 lib/gemini.ts                    shared caller: two model lists, timeouts, retries, 429 cooldown, status for /api/health
 lib/sim.ts · lib/engine.check.ts balance simulation (npm run sim) and engine assertions (npm run check)
 app/api/feedback/route.ts        Gemini listens to the clip and gives ONE tip; language-aware template fallback
+app/api/transcribe/route.ts      second ear: when Chrome returns nothing for a short word, Gemini transcribes the clip verbatim (never told the target) and the same scorer decides
 app/api/mentor/route.ts          Eco, the Socratic guide (keyless hints are language-aware too)
 app/api/vocab/route.ts           generates and validates new lexicon entries for a theme (lite model first)
 app/api/health/route.ts          Gemini status; ?ping=1 lists usable models and makes one test call

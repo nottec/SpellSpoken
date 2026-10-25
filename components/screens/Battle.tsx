@@ -24,6 +24,7 @@ import { LANGS, type LangId } from "@/lib/lang";
 import { bestMatch, similarityTyped } from "@/lib/scoring";
 import { isWordMastered, type WordStats } from "@/lib/lexicon";
 import { speak, TIMEOUT_BY_LEVEL, IDLE_BY_LEVEL, ACCEPT_AT, type Capture } from "@/lib/speech";
+import { needsFallback, transcribeClip, withFallback } from "@/lib/transcribe";
 import { playSfx } from "@/lib/sfx";
 import type { Vocab } from "@/data/vocab";
 import { useSpeechCapture } from "@/components/hooks/useSpeechCapture";
@@ -272,18 +273,28 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
       setNotice(null); setVerdict(null);
       const target = phrase;   // the phrase this capture is scored against, even if the hand re-renders meanwhile
       playSfx("listen");
-      const cap = await mic.start(L.speech, {
+      let cap: Capture = await mic.start(L.speech, {
         timeoutMs: TIMEOUT_BY_LEVEL[target.level] ?? TIMEOUT_BY_LEVEL[2],
         idleMs: IDLE_BY_LEVEL[target.level] ?? IDLE_BY_LEVEL[2],
         accept: (alts) => bestMatch(alts, target.text, L.tokens).score >= ACCEPT_AT,
       });
       if (!mounted.current) return;   // the screen is gone: the hook already released the mic; nothing to score
+      if (needsFallback(cap)) {
+        // Chrome discards a lone syllable said once, but the clip holds the voice: Gemini transcribes it
+        // (never told the target), then the scorer below decides exactly as for recognizer words.
+        setNotice({ text: "Chrome missed that short word; Gemini is listening to the clip…" });
+        const ear = await transcribeClip(cap.audio!, lang);
+        if (!mounted.current) return;
+        setNotice(null);
+        if (ear.transcript) cap = withFallback(cap, ear.transcript);
+        else if (process.env.NODE_ENV !== "production") console.log("[speech] gemini ear heard nothing:", ear.why);
+      }
       const best = bestMatch(cap.alts, target.text, L.tokens);
-      if (process.env.NODE_ENV !== "production") console.log("[speech]", { target: target.text, reason: cap.reason, early: cap.early, ms: cap.ms, alts: cap.alts, best });   // dev only: what Chrome returned and how it scored
+      if (process.env.NODE_ENV !== "production") console.log("[speech]", { target: target.text, reason: cap.reason, via: cap.via ?? "chrome", peak: cap.peak, early: cap.early, ms: cap.ms, alts: cap.alts, best });   // dev only: what was heard and how it scored
       switch (cap.reason) {
         // Not casts: no breath, no damage, no grudge. The card stays selected for another try.
         case "silence": setNotice({ text: "I didn't hear anything — try again." }); return;
-        case "timeout": setNotice({ text: "I heard you start but couldn't make it out — try again." }); return;
+        case "timeout": setNotice({ text: "I heard you start but couldn't make it out — try again; a short word is easiest to hear said twice." }); return;
         case "error": setNotice({ text: cap.error ?? "The microphone failed. Try again, or type the incantation.", offerTyping: true }); return;
         case "unsupported": onUseTyping(true); setNotice({ text: cap.error ?? "This browser can't hear you. Typing mode is on." }); return;
         // Casts: "result" (final, early accept or idle stop) and "stopped" (the Stop button / Space) both score what was heard.

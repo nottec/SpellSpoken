@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { similarity, similarityTyped, matchScore, matchDetail, bestMatch, missedWords, grade, BACKFIRE_BELOW } from "./scoring";
+import { similarity, similarityTyped, matchScore, matchDetail, bestMatch, missedWords, grade, esNumber, zhNumber, BACKFIRE_BELOW } from "./scoring";
 import { mergeAlts } from "./speech";
 
 let passed = 0;
@@ -133,6 +133,19 @@ check("typed path unchanged: pinyin with tones, without tones, characters, Spani
   assert.equal(similarityTyped("心", "心", "char"), 1);
   assert.equal(similarityTyped("hola", "hola", "word"), 1);
   assert.ok(similarityTyped("xing4", "心", "char") < 0.75);
+});
+
+check("numerals: the recognizer writes numbers as digits; 10 → diez, 100 → cien, 1000 → mil, 3:30 → tres y media, 1º → primero; zh 20 → 二十, 2次 → 两次, 110 → 一百一十", () => {
+  assert.equal(esNumber(10), "diez"); assert.equal(esNumber(31), "treinta y uno"); assert.equal(esNumber(100), "cien");
+  assert.equal(esNumber(101), "ciento uno"); assert.equal(esNumber(1000), "mil"); assert.equal(esNumber(2500), "dos mil quinientos");
+  assert.equal(matchScore("10", "diez"), 1); assert.equal(matchScore("100", "cien"), 1); assert.equal(matchScore("1000", "mil"), 1); assert.equal(matchScore("3", "tres"), 1);
+  assert.ok(matchScore("2 veces", "dos veces") >= 0.99); assert.ok(matchScore("100 años", "cien años") >= 0.99);
+  assert.equal(matchScore("3:30", "tres y media"), 1); assert.equal(matchScore("las 3:00", "las tres"), 1); assert.equal(matchScore("el 1º de mayo", "el primero de mayo"), 1);
+  assert.ok(matchScore("tengo 3 hermanos y una hermana", "tengo tres hermanos y una hermana") >= 0.99);
+  assert.equal(grade(bestMatch([alt("10", 0.9)], "diez").score).label, "Perfecto", "diez heard as 10 at confidence 0.9");
+  assert.equal(zhNumber(20), "二十"); assert.equal(zhNumber(101), "一百零一"); assert.equal(zhNumber(110), "一百一十"); assert.equal(zhNumber(1000), "一千");
+  assert.equal(matchScore("10", "十", "char"), 1); assert.equal(matchScore("20", "二十", "char"), 1);
+  assert.equal(matchScore("一天2次", "一天两次", "char"), 1); assert.equal(matchScore("5月1号", "五月一号", "char"), 1);
 });
 
 check("grade bands: ≥ 0.90 Perfecto, ≥ 0.75 Bien, ≥ 0.45 Más o menos, below backfires; BACKFIRE_BELOW = 0.45; zh labels", () => {

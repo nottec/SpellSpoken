@@ -37,7 +37,7 @@ export function useSpeechCapture(): {
 
   const start = useCallback((lang: string, opts: SpeechCaptureOpts = {}) => {
     if (active.current) return active.current.result;
-    if (!mounted.current) return Promise.resolve<Capture>({ alts: [], ms: 0, reason: "silence", early: false, audio: null }); // screen is gone: never open the mic
+    if (!mounted.current) return Promise.resolve<Capture>({ alts: [], ms: 0, reason: "silence", early: false, peak: 0, audio: null }); // screen is gone: never open the mic
     setListening(true); setLevel(0); setHeard("");
     const raw = captureCast(lang, {
       ...opts,

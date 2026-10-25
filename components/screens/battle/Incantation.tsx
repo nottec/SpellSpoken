@@ -6,6 +6,7 @@ import type { Vocab } from "@/data/vocab";
 import { isWordMastered, type WordStats } from "@/lib/lexicon";
 import { LANGS, elementLabel, type LangId } from "@/lib/lang";
 import { ListeningRing, VuMeter, Sigil, Ruby } from "@/components/fx";
+import { syllables } from "@/lib/scoring";
 import { EL_TEXT } from "./copy";
 
 export type Notice = { text: string; offerTyping?: boolean };
@@ -66,6 +67,11 @@ export default function Incantation(p: IncantationProps) {
           </h1>
           {phrase.reading && <p className="mt-1 font-display text-xl text-ember/90">{phrase.reading}</p>}
           <p className="mt-2 text-sm text-vellum2">“{phrase.en}”{phrase.focus ? ` · watch the ${phrase.focus}` : ""}</p>
+          {!useTyping && L.hasReading && syllables(phrase.text).length === 1 && (
+            <p className="mt-1 text-xs text-vellum2/80">
+              one syllable: Chrome hears it best said twice, <span lang={L.speech} className="text-vellum">{phrase.text} {phrase.text}</span>, which scores as once
+            </p>
+          )}
           {listening && !useTyping && (
             <p className="mt-2 min-h-5 text-sm text-ember/80" role="status" aria-live="polite">
               {heard ? <>hearing: <span lang={L.speech} className={`text-ember ${L.italic ? "italic" : ""}`}>{heard}</span> …</> : "listening…"}

@@ -39,6 +39,10 @@ export type Capture = {
   ms: number;                 // start → the accepted interim (early) or the final result
   reason: CaptureReason;
   early: boolean;             // listening ended because `accept` matched an interim result
+  /** Loudest meter level seen (0..1 on the VU scale; 0 without a meter): tells a voiced clip the recognizer ignored from real silence. */
+  peak: number;
+  /** "gemini" once a caller replaced an empty recognizer result with Gemini's transcript of the clip (lib/transcribe.ts). */
+  via?: "gemini";
   error?: string;
   audio: { b64: string; mime: string } | null;
 };
@@ -82,6 +86,12 @@ export const DEFAULT_IDLE_MS = 2600;
 export const TIMEOUT_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 6000, 2: 8000, 3: 11000 };
 export const IDLE_BY_LEVEL: Record<1 | 2 | 3, number> = { 1: 1300, 2: 1800, 3: 2300 };
 export const ACCEPT_AT = 0.9;
+/**
+ * While the recognizer has flagged speech but produced no words yet, the idle stop waits at least this
+ * long: Chrome needs a moment to decide on a lone syllable, and stopping sooner only guarantees an
+ * empty result (塔 said once: `speechstart`, then nothing). Once an interim exists, `idleMs` applies.
+ */
+export const NO_WORDS_IDLE_MS = 2000;
 
 /**
  * The alternatives a capture resolves with (pure; checked in lib/scoring.check.ts).
@@ -267,13 +277,15 @@ function capture(lang: string, opts: CaptureOpts, wantAudio: boolean): CaptureHa
   let stopFn: () => void = () => {};
 
   const result = new Promise<Capture>((resolve) => {
-    const unsupported = (): Capture => ({ alts: [], ms: 0, reason: "unsupported", early: false, error: UNSUPPORTED_TEXT, audio: null });
+    const unsupported = (): Capture => ({ alts: [], ms: 0, reason: "unsupported", early: false, peak: 0, error: UNSUPPORTED_TEXT, audio: null });
     const Ctor = recognitionCtor();
     if (!Ctor) { resolve(unsupported()); return; }
     let rec: SR;
     try { rec = new Ctor(); } catch { resolve(unsupported()); return; }
 
-    const media = wantAudio || opts.onLevel ? openMedia(wantAudio, opts.onLevel) : null;
+    let peak = 0;                           // loudest meter level: a voiced clip the recognizer ignored is not silence
+    const onLevel = opts.onLevel;
+    const media = wantAudio || onLevel ? openMedia(wantAudio, onLevel ? (v) => { if (v > peak) peak = v; onLevel(v); } : undefined) : null;
 
     let done = false;                       // promise settled (or settling)
     let ended = false;                      // recognizer fired onend
@@ -301,7 +313,7 @@ function capture(lang: string, opts: CaptureOpts, wantAudio: boolean): CaptureHa
       if (!ended) { try { rec.abort(); } catch { /* already stopped */ } }
       const alts = mergeAlts(finalAlts, interimAlts, accepted);
       const ms = t0 ? Math.max(0, Math.round((resultAt ?? performance.now()) - t0)) : 0;
-      const base = { alts, ms, reason, early: accepted !== null, ...(error ? { error } : {}) };
+      const base = { alts, ms, reason, early: accepted !== null, peak, ...(error ? { error } : {}) };
       (media ? media.close() : Promise.resolve(null)).then(
         (audio) => resolve({ ...base, audio }),
         () => resolve({ ...base, audio: null }),
@@ -333,7 +345,8 @@ function capture(lang: string, opts: CaptureOpts, wantAudio: boolean): CaptureHa
     const armIdle = () => {
       if (done || stopping) return;
       cancel(idleTimer);
-      idleTimer = after(idleMs, () => { idleTimer = null; if (!done && !stopping) requestStop("idle"); });
+      const wait = interimAlts.length ? idleMs : Math.max(idleMs, NO_WORDS_IDLE_MS);   // no words yet: give the recognizer its moment
+      idleTimer = after(wait, () => { idleTimer = null; if (!done && !stopping) requestStop("idle"); });
     };
 
     rec.lang = lang;
