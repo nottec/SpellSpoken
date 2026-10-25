@@ -250,7 +250,7 @@ main { position: relative; z-index: 1; }
    lands, and carries the speech bubble. Still while the chat panel is open or motion is reduced. */
 .eco-flyer { position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 40; pointer-events: none; --w: 1; animation: ecoWander 34s ease-in-out infinite; }
 .eco-flyer > * { pointer-events: auto; }
-.eco-still { animation-play-state: paused; }
+.eco-still { animation: none; transform: none; }   /* chat open: Eco comes home under the panel and never covers its input */
 @keyframes ecoWander {
   0%, 100% { transform: translate(0, 0); }
   18%  { transform: translate(calc(-28px * var(--w)), calc(-150px * var(--w))); }

@@ -45,11 +45,11 @@ export default function Mentor({ ctx, nudge, tip }: { ctx: MentorCtx; nudge: num
     return () => clearTimeout(t);
   }, [tip?.key, tip?.text]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!bubble) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setBubble(null); };
+    if (!bubble && !open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setBubble(null); setOpen(false); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [bubble]);
+  }, [bubble, open]);
 
   async function ask(text: string) {
     const t = text.trim(); if (!t || busy) return;
@@ -92,9 +92,10 @@ export default function Mentor({ ctx, nudge, tip }: { ctx: MentorCtx; nudge: num
         <div className="fixed bottom-24 right-6 z-40 flex w-[min(92vw,22rem)] flex-col overflow-hidden rounded-2xl bg-dusk/95 shadow-2xl shadow-black/60 ring-1 ring-white/10 backdrop-blur animate-reveal">
           <div className="flex items-center justify-between px-4 py-3">
             <p className="font-display text-lg italic">Eco</p>
-            <p className="text-xs text-vellum2">
+            <p className="flex items-center gap-2 text-xs text-vellum2">
               guide, not oracle
-              {resting && <span className="ml-2 text-[10px] text-vellum2/70" title="The coach's quota is spent; Eco answers from the book for now.">(Eco is resting)</span>}
+              {resting && <span className="text-[10px] text-vellum2/70" title="The coach's quota is spent; Eco answers from the book for now.">(Eco is resting)</span>}
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close Eco" title="Close (Esc)" className="rounded px-1.5 text-sm text-vellum2 hover:text-vellum focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70">✕</button>
             </p>
           </div>
           <div ref={listRef} className="max-h-72 space-y-2 overflow-y-auto px-4 pb-2">

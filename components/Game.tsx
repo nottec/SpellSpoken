@@ -33,7 +33,7 @@ import End from "./screens/End";
 import Mentor, { type MentorCtx } from "./Mentor";
 import Handbook from "./Handbook";
 import Sky from "./Sky";
-import { HANDBOOK_EVENT } from "@/components/fx";
+import { HANDBOOK_EVENT, MENU_EVENT } from "@/components/fx";
 
 /* ---------- the saved run: one per language ---------- */
 
@@ -170,6 +170,16 @@ export default function Game() {
     removeRun(lang);
     setSaved(null); setRun(null); setLastCast(null);
   }
+  /** Back to the title mid-run: the run is already saved on every change, so the title offers Continue. */
+  const toMenu = useCallback(() => {
+    const r = latest.current.run;
+    if (r && r.phase !== "won" && r.phase !== "dead") setSaved(r); else { removeRun(latest.current.lang); setSaved(null); }
+    setRun(null); setLastCast(null); setSelection(null);
+  }, []);
+  useEffect(() => {
+    window.addEventListener(MENU_EVENT, toMenu);
+    return () => window.removeEventListener(MENU_EVENT, toMenu);
+  }, [toMenu]);
 
   /* what Eco is told (every field optional on the server) */
   const mentorCtx = useMemo<MentorCtx>(() => {

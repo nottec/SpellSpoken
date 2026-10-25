@@ -115,7 +115,7 @@ export default function Incantation(p: IncantationProps) {
             <button type="button" onClick={p.onRedraw} disabled={busy || listening || run.redrawsLeft <= 0} className="btn-quiet" title="Draw a different incantation, no penalty (R)">
               Redraw ({run.redrawsLeft} left)
             </button>
-            <VuMeter level={level} active={listening} className={listening ? "" : "invisible"} />
+            {listening && <VuMeter level={level} active={listening} />}   {/* not rendered while idle, so the Cast · Hear it · Redraw row stays centred */}
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-vellum2">

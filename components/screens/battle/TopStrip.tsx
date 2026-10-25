@@ -3,7 +3,7 @@
 import { FLOORS, relicsOf, type Run } from "@/lib/engine";
 import { relicName } from "@/data/relics";
 import type { LangId } from "@/lib/lang";
-import { HpBar, InkCounter, StatusBadge, Ruby, SfxToggle, HelpButton } from "@/components/fx";
+import { HpBar, InkCounter, StatusBadge, Ruby, SfxToggle, HelpButton, MenuButton } from "@/components/fx";
 
 /** Floor, turn, ink, your life (+ shield and statuses) and the relic row. */
 export default function TopStrip({ run, lang }: { run: Run; lang: LangId }) {
@@ -17,6 +17,7 @@ export default function TopStrip({ run, lang }: { run: Run; lang: LangId }) {
           <InkCounter value={run.ink} />
           <SfxToggle />
           <HelpButton />
+          <MenuButton />
         </div>
         <div className="flex min-w-[14rem] flex-1 flex-wrap items-center justify-end gap-x-2 gap-y-1 sm:max-w-sm">
           <HpBar value={run.hp} max={run.maxHp} label="Your life" className="min-w-[10rem] flex-1" />
