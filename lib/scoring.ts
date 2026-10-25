@@ -125,7 +125,17 @@ export function grade(score: number, lang = "es"): { label: string; color: strin
 
 /** A hint based on which target words were missed. */
 export function missedWords(said: string, target: string, mode: TokenMode = "word") {
-  if (mode === "char") { const sc = new Set(syllables(normalize(said, "char")).map((x) => x.slice(0, -1))); return [...normalize(target, "char")].filter((c) => !sc.has(syllables(c)[0]?.slice(0, -1))); }
+  if (mode === "char") {
+    // Read the target as one string so context readings (了 → le, 不/一 sandhi) match what
+    // `syllables()` produced for the transcript; a lone character would read differently.
+    const t = normalize(target, "char");
+    const heard = new Set(syllables(normalize(said, "char")).map((x) => x.slice(0, -1)));
+    const chars = [...t], syl = syllables(t);
+    return chars.filter((c, i) => {
+      const s = syl.length === chars.length ? syl[i] : syllables(c)[0];
+      return !!s && !heard.has(s.slice(0, -1));
+    });
+  }
   const sw = new Set(normalize(said).split(" "));
   return normalize(target).split(" ").filter((w) => !sw.has(w));
 }
