@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "sim": "tsx lib/sim.ts",
-    "check": "tsx lib/engine.check.ts"
+    "check": "tsx lib/engine.check.ts && tsx lib/scoring.check.ts"
   },
   "dependencies": {
     "next": "^15.1.0",
