@@ -35,9 +35,11 @@ player turn           castCard(...) any number of times while breath ≥ card co
 endTurn(run)          discard hand → enemy phase → status ticks → draw new hand → breath reset
 ```
 
-- `run.breath` / `run.maxBreath` (base 3). A card's `cost` is breath; by default `cost = tier`.
-- `HAND_SIZE = 4`. At turn start draw up to HAND_SIZE; if the draw pile is empty, shuffle the
-  discard into it (seeded). Unplayed cards are discarded at end of turn.
+- `run.breath` / `run.maxBreath` (base 3). A card's `cost` is breath; it usually equals the tier, but §13
+  decouples the two where that creates a decision, and `cardCost(run, card)` applies Tailwind/Veleta discounts.
+- `HAND_SIZE = 5` (was 4 before §13). At turn start draw up to HAND_SIZE (Retained cards count toward it);
+  if the draw pile is empty, shuffle the discard into it (seeded). Unplayed cards are discarded at end of turn
+  unless they Retain; Exhausted cards sit out the rest of the battle.
 - `run.redrawsLeft` (base 1 per turn, + relic): the player may redraw the *phrase* for the
   selected card without penalty that many times per turn. The engine only tracks the counter
   (`useRedraw(run)`); drawing itself is `drawPhrase`.
@@ -179,8 +181,9 @@ Upgrade (`up`): +30% power, +1 stack on the first applied status (or +1 turn if 
 stacks to speak of), and displayed as `Name+`. `cardName(card, lang)` returns the localized name
 with "+" appended when upgraded.
 
-Starting deck (7): three tier-1 attacks of **three different elements** (seeded), `escudo`
-(shield), `aliento` (heal), `susurro` (0-cost shadow jab), and one tier-1 hex (seeded).
+Starting deck (10, since §13): four basic tier-1 attacks of **four different elements** (seeded; fire and
+water may arrive as their 2-cost variant Hoguera/Témpano), `escudo` ×2, `aliento`, `susurro` (0-cost shadow
+jab), one tier-1 hex with a cost (seeded) and `foco` (0-cost, Retain).
 
 Card pool (`data/spells.ts`, ~24; each has `id, name, zh, gloss, element, kind, tier, cost, power,
 themes, rarity, desc, applies?, drain?, gain?`). `desc` is English rules text, e.g.
@@ -388,8 +391,10 @@ the **same `run` reference**; functions called in the wrong phase or with bad id
 
 ```ts
 // constants (balance knobs)
-export const HAND_SIZE = 4; export const BASE_BREATH = 3; export const START_HP = 70; export const START_INK = 30;
+export const RUN_VERSION = 2;                                       // stamped on newRun().version; Game.tsx discards saves with another version
+export const HAND_SIZE = 5; export const BASE_BREATH = 3; export const START_HP = 70; export const START_INK = 30;
 export const GRUDGE_BELOW = 0.7; export const RESONANCE_AT = 3; export const REST_HEAL = 0.3; export const LOG_LINES = 20;
+export const ELEMENT_OFFER_BIAS = 0.6;                              // share of card offers drawn from elements already in the deck (§13)
 export const BALANCE: { floorScale: number };                       // 0.05 — enemy hp/attack × (1 + floor × floorScale); mutable for lib/sim.ts only
 export const CARD_PRICE: Record<1 | 2 | 3, number>;                  // 35 / 55 / 80 (± seeded jitter in the shop)
 export const RELIC_PRICE = 110; export const REMOVE_PRICE = 45; export const UPGRADE_PRICE = 35;
@@ -410,10 +415,11 @@ export type Shop = { cards: ShopCard[]; relics: ShopRelic[]; removePrice: number
 export type Rewards = { cards: Spell[]; relics: Relic[]; ink: number; cardTaken: boolean; relicTaken: boolean };
 export type EventState = { id: string; stage: "choose" | "pick" | "done"; pending?: "remove" | "upgrade"; outcome?: string };
 export type RunStats = { casts: number; perfect: number; backfires: number; damage: number; scoreSum: number; turns: number; inkEarned: number; maxChain: number; reactions: number; elites: number };
-export type Run = { /* §8, plus perfectUsed: boolean */ };
-export type CastResult = { /* §1 */ };
-export type TurnResult = { /* §1 */ };
-export type CastPreview = { affordable: boolean; silenced: boolean; weak: boolean; resist: boolean; underTier: boolean; chain: number; reaction: ReactionId | null; mult: number };
+export type Run = { /* §8, plus perfectUsed: boolean; version: number; exhausted: string[]; discount: number (§13) */ };
+export type CastResult = { /* §1, plus (§13): */ costPaid: number; drawn: number; exhausted: boolean; consumed?: { status: StatusId; stacks: number }; bonusPower: number; sacrificed: number; vsBonus: boolean };
+export type TurnResult = { /* §1, plus (§13): */ retained: number };
+export type CastPreview = { affordable: boolean; silenced: boolean; weak: boolean; resist: boolean; underTier: boolean; chain: number; reaction: ReactionId | null; mult: number;
+  cost: number; bonusPower: number; bonusMult: number; bonusText: string | null };   // §13: cost after discounts; what the card's conditionals give right now ("+18 from Burn", "×1.5 vs Chilled"); `mult` includes bonusMult
 
 // rng
 export function rng(seed: number): () => number;                     // xorshift32, values in [0, 1)
@@ -442,16 +448,18 @@ export function cardName(card: Card, lang: string): string;          // localize
 export function cardDesc(card: Card): string;                        // English rules text with upgraded numbers
 export function handCards(run: Run): { card: Card; spell: Spell }[]; // the hand in order
 export function currentNode(run: Run): MapNode | undefined;
+export function cardCost(run: Run, card: Card): number;              // §13: breath this card costs right now (Tailwind / Veleta discounts); the UI shows this, not spell.cost
+export function cardTags(card: Card): string[];                      // §13: ["Exhaust" | "Retain" | "Draw N" | "Tailwind" | "Detonate"] badges
 
 // run flow
-export function newRun(seed?: number): Run;                          // phase "map", floor 0, 7 cards, 30 ink, 70 hp
+export function newRun(seed?: number): Run;                          // phase "map", floor 0, 10 cards, 30 ink, 70 hp, version = RUN_VERSION
 export function chooseNode(run: Run, idx: number): Run;              // enters run.map[run.floor][idx]: battle | rest | event | merchant
 export function advance(run: Run): Run;                              // floor + 1 → "map" (clears rewards/event/shop/enemy)
 
 // battle
 export function spawnEnemy(id: string, floor: number): Enemy;
 export function startBattle(run: Run, enemyId?: string): Run;        // defaults to the current node's enemy; called by chooseNode
-export function castBlocker(run: Run, uid: string): string | null;   // null = castable; else "not enough breath" | "silenced" | "card not in hand" | "not in battle"
+export function castBlocker(run: Run, uid: string): string | null;   // null = castable; else "not enough breath" | "silenced" | "not enough life" (sacrifice ≥ hp) | "card not in hand" | "not in battle"
 export function canAct(run: Run): boolean;                           // some card in hand is castable
 export function previewCast(run: Run, spell: Spell): CastPreview;
 export function useRedraw(run: Run): Run;                            // redrawsLeft − 1; same run when 0
@@ -534,10 +542,15 @@ export type StatusApply = { status: StatusId; stacks: number; turns: number; tar
 export const STACK_STATUSES: ReadonlySet<StatusId>;                              // burn, stagger, armor, strength, regen (the number shown is stacks; others show turns)
 export const STATUS_LABEL: Record<StatusId, string>;                             // English
 export const STATUS_DESC: Record<StatusId, string>;                              // English one-liners
-export type Spell = { id: string; name: string; zh: string; gloss: string; element: Element; kind: SpellKind; tier: 1 | 2 | 3; cost: number; power: number; themes: Theme[]; rarity: Rarity; desc: string; applies?: StatusApply[]; drain?: number; gain?: { breath?: number } };
+export type Spell = { id: string; name: string; zh: string; gloss: string; element: Element; kind: SpellKind; tier: 1 | 2 | 3; cost: number; power: number; themes: Theme[]; rarity: Rarity; desc: string; applies?: StatusApply[]; drain?: number; gain?: { breath?: number };
+  // §13 keywords, all optional, all spelled out by spellDesc
+  exhaust?: boolean; retain?: boolean; draw?: number; consume?: { status: StatusId; power: number }; perStack?: { status: StatusId; power: number };
+  vs?: { status: StatusId; mult?: number; drain?: number }; tailwind?: number; perCast?: number; sacrifice?: number; also?: { heal?: number } };
+export const STATUS_ADJ: Record<StatusId, string>;                               // "Chilled", "Burning", … for conditional rules text
 export const UPGRADE_POWER = 1.3; export function upgradedPower(power: number): number;
+export function sacrificeOf(spell: { sacrifice?: number }, up?: boolean): number;  // life a sacrifice card costs (halved, rounded up, when upgraded)
 export function spellDesc(spell: Omit<Spell, "desc">, up?: boolean): string;
-export const spells: Spell[];                                                    // 28
+export const spells: Spell[];                                                    // 40 (28 + the 12 of §13)
 export function spellById(id: string): Spell;
 export function spellName(s: Spell, lang: string): string;
 export function isDamageKind(k: SpellKind): boolean;                             // attack | drain
@@ -566,8 +579,9 @@ export function enemyTaunt(e: EnemyDef, lang: string): string;
 export type Relic = { id: string; name: string; zh: string; gloss: string; emoji: string; desc: string;
   scoreBonus?: number; maxHp?: number; block?: number; critBonus?: number; echo?: boolean; lifesteal?: number;
   breath?: number; handSize?: number; redraws?: number; burnBonus?: number; chainBonus?: number; thorns?: number;
-  startArmor?: number; inkBonus?: number; resonanceAt?: number; turnFocus?: boolean; perfectBreath?: boolean };
-export const relics: Relic[];                                                    // 17
+  startArmor?: number; inkBonus?: number; resonanceAt?: number; turnFocus?: boolean; perfectBreath?: boolean;
+  exhaustBreath?: boolean; drawBonus?: number; retainOne?: boolean; firstDiscount?: boolean; castStrength?: number };   // §13 keyword hooks
+export const relics: Relic[];                                                    // 22 (17 + the 5 of §13)
 export function relicById(id: string): Relic;
 export function relicName(x: Relic, lang: string): string;
 ```
@@ -598,6 +612,10 @@ export function eventTitle(e: EventDef, lang: string): string;
 6. 17 relics (not 12–14): one relic per requested hook. 28 cards: adds Inspiración (`gain: { breath: 2 }`); Amanecer heals via regen 5/2.
 7. Elites never on floor 1; no duplicate door kinds on a floor.
 8. `BALANCE.floorScale` is a mutable object so `lib/sim.ts` can sweep it; `startBattle` takes an optional `enemyId`.
+9. §13 (card depth): `HAND_SIZE` 5, a 10-card starter, `RUN_VERSION`, `Run.exhausted` / `Run.discount`, the keyword
+   fields on `Spell`, `cardCost` / `cardTags`, the extra `CastResult` / `TurnResult` / `CastPreview` fields, `castBlocker`
+   → "not enough life", 40 cards, 22 relics, element-weighted offers. All additive: the phase-2 UI compiles unchanged.
+10. Enemy `attack` × 0.9 across the roster (the bigger starter deck and once-per-battle tier-3s made fights longer).
 
 ---
 
@@ -607,38 +625,108 @@ export function eventTitle(e: EventDef, lang: string): string;
 Each cast's `rawScore = clamp(normal(p, 0.10), 0, 1)`; tier-3 phrases draw `normal(p − 0.05, 0.12)`;
 `ms` 1800 when p ≥ 0.85 else 3000; `wordMastered` false. Bot policy: on the map rest when hp < 50%,
 merchant when ink ≥ 60, elite when hp > 70%, else fight, else event; in battle shield when the
-telegraphed hit ≥ 60% of current hp, heal under 35%, otherwise the castable card with the best
-`previewCast().mult × power` (hexes valued by what they prevent/apply, exposed before big hits, free
-focus/breath first), end turn when `!canAct` or nothing useful remains. Rewards: highest-power card of
-an element the deck lacks, else highest power; first relic. Rest: heal under 60% else upgrade.
-Trials attempted when p ≥ 0.75. Shop: a relic if affordable, else the best affordable card.
+telegraphed hit ≥ 60% of current hp, heal under 35%, take a kill when one is in hand (the cheapest, not an
+Exhaust card), otherwise rank the castable cards by value per breath with free cards first: attacks by
+`previewCast().mult × (power + strength + bonusPower)`, Detonate minus the burn ticks it gives up, Draw and
+Tailwind when they open the hand, Exhaust attacks held back on a nearly dead minion, Pacto / Inspiración only
+when the hand costs more than the breath left, hexes by what they prevent or apply, exposed before big hits;
+end the turn when nothing has value. Rewards and shop: the card worth most to the deck (power, +8 per card of
+its element, +6 per burn / chill / stagger / weak source the deck already has for Avivar, Explosión, Témpano,
+Escarcha, Filo, Garra, −10 for a sentence); the first affordable relic. Rest: heal under 60% else upgrade.
+Trials attempted when p ≥ 0.75.
 
-Result (400 runs per p, seeds 1–400, `npm run sim`):
+Metrics: `allPlay%` = turns whose whole starting hand was affordable; `casts/turn` = casts ÷ hands dealt;
+`left` = cards still in hand when the turn was ended.
 
-| p    | win%  | avg floor | casts | words | turns | backfire% |
-|------|-------|-----------|-------|-------|-------|-----------|
-| 0.95 |  63.8 |      7.51 |  41.2 |  34.2 |  13.5 |       0.0 |
-| 0.85 |  48.3 |      7.31 |  44.2 |  35.1 |  14.8 |       0.0 |
-| 0.75 |  34.3 |      6.80 |  45.9 |  32.8 |  15.7 |       0.2 |
-| 0.65 |  17.5 |      6.03 |  44.1 |  28.2 |  15.0 |       2.4 |
-| 0.50 |   0.0 |      3.66 |  23.3 |  16.8 |   6.8 |      31.5 |
+Result (400 runs per p, seeds 1–400, `npm run sim`, engine2 / §13):
 
-Targets were 60–75 / 45–60 / 25–40 / 10–25 / ≤ 5 and 25–45 casts; all met (p = 0.75 sits at 45.9
-casts). "avg floor" counts floors entered (8 = cleared). A human will do a little worse than the bot.
+| p    | win%  | avg floor | casts | words | turns | backfire% | allPlay% | casts/turn | left |
+|------|-------|-----------|-------|-------|-------|-----------|----------|------------|------|
+| 0.95 |  64.8 |      7.76 |  53.7 |  41.7 |  13.5 |       0.0 |     12.5 |       2.88 | 2.13 |
+| 0.85 |  55.0 |      7.68 |  57.3 |  42.7 |  15.0 |       0.0 |     11.9 |       2.88 | 2.13 |
+| 0.75 |  33.8 |      7.01 |  59.6 |  39.5 |  16.1 |       0.1 |     11.1 |       2.93 | 2.09 |
+| 0.65 |  13.3 |      6.12 |  55.4 |  32.9 |  14.9 |       1.9 |     11.5 |       3.00 | 2.02 |
+| 0.50 |   0.0 |      3.80 |  27.0 |  18.5 |   6.7 |      28.4 |     10.4 |       3.03 | 1.79 |
 
-What was tuned: the first draft (minions ~44 hp / 10 attack, elites ~100 / 17, bosses ~165 / 19,
-final 230 / 24) won 98% at p = 0.95. Sweeping enemy hp × {1.1…2.2} and attack × {1.3…1.9} showed
-that hp mostly adds casts while attack adds deaths, so the roster settled at about hp × 1.19 and
-attack × 1.63 of the draft (minions 46–57 hp / 15–18, elites 106–131 / 24–27, bosses 195–209 / 28–29,
-final 285 / 36). Spell power, costs, ink and prices are unchanged from §3/§6.
+Targets: win 60–70 / 45–55 / 30–40 / 15–25 / 0–5, allPlay ≤ 25 %, casts/turn 2.2–2.8. Win rates sit in, or within
+one standard deviation (≈ 2.5 points at n = 400) of, every band: p = 0.85 is on the line, p = 0.65 is 1.7 under, and
+the two move in opposite directions under any flat change. allPlay is 10–12 %. casts/turn is 2.9–3.0, above the
+band: two free cards among ten plus three breath make ≈ 2.9 the arithmetic floor while the deck is all 1-cost,
+and the bot plays every free card. Levers if that band matters more than the free-card feel: cost 1 on Foco
+(or Exhaust instead of Retain), or a third 2-cost starter. "avg floor" counts floors entered (8 = cleared).
+Casts per run rose from ≈ 44 to ≈ 55 (hand 5): about 40 distinct words a run. A human will do a little worse.
+
+What was tuned (engine2): with the phase-2 roster the bigger starter (two shields, Foco, two free cards) and the
+once-per-battle tier-3s made fights longer and p = 0.95 fell to 53 %. Enemy `attack` × 0.9 across the roster
+brought the table back (minions 14–16, elites 22–23 after one more point off, bosses 25–26); the final boss is the
+sensitive knob (olvido 32 → 68 / 57.5 / 35 / 15, 34 → 58.5 / 47 / 26 / 12), settled at 33. hp is unchanged (hp adds
+casts, attack adds deaths). Spell power, costs, ink and prices are as in §3 / §6 / §13. Phase-2 history: the first
+draft (minions ~44 hp / 10 attack, elites ~100 / 17, bosses ~165 / 19, final 230 / 24) won 98 % at p = 0.95 and
+was scaled to hp × 1.19 / attack × 1.63; the phase-2 table was 63.8 / 48.3 / 34.3 / 17.5 / 0 with ≈ 44 casts.
 
 Knobs, in order of leverage:
 
 - `data/enemies.ts` `hp` / `attack` (per enemy; `pattern` changes the texture, `ink` the economy).
 - `BALANCE.floorScale` in `lib/engine.ts` (0.05): how much harder floors 4–6 are than 0–2.
 - `power` / `cost` / `applies` in `data/spells.ts`; `UPGRADE_POWER` (1.3).
-- `START_HP` 70, `START_INK` 30, `HAND_SIZE` 4, `BASE_BREATH` 3, `REST_HEAL` 0.3 in `lib/engine.ts`.
+- `START_HP` 70, `START_INK` 30, `HAND_SIZE` 5, `BASE_BREATH` 3, `REST_HEAL` 0.3, `ELEMENT_OFFER_BIAS` 0.6 in `lib/engine.ts`;
+  the starter's two free cards (Susurro, Foco) and the 2-cost tier-1 variants set casts per turn (§13).
 - Prices `CARD_PRICE` {35, 55, 80}, `RELIC_PRICE` 110, `REMOVE_PRICE` 45, `UPGRADE_PRICE` 35; reward
   tier odds in `tierWeights()`; crit/backfire thresholds in §1 and `lib/scoring.ts`.
 - Sim what-ifs without touching data: `npm run sim -- --hp 1.1 --atk 0.9 --scale 0.08 --n 200 --p 0.9,0.7`;
   `--verbose --p 0.85 --seed 3` prints one run's log and final state.
+
+---
+
+## 13. Card depth (engine2)
+
+The complaint this answers: "the cards don't synergize, and you can almost always play the whole hand." Hand 5,
+breath 3, a 10-card starter with two free cards (Susurro, Foco): the whole hand is affordable only when both free
+cards arrive with three 1-cost cards (≈ 11 % of turns in the sim), so a turn is a choice of two or three cards.
+**Tier is phrase difficulty, cost is breath.** Hoguera / Témpano / Empujón are one easy word for 2 breath; Avivar /
+Escarcha / Filo de viento / Letanía are a harder phrase for 1 breath. Keywords live on `Spell` as optional fields,
+`spellDesc` spells every one out (so `cardDesc(card)` stays the single source of truth) and `cardTags` badges the
+boolean ones: **Exhaust** (out for the battle, back after it: every tier-3, Inspiración, Pacto, Señal), **Retain**
+(Foco, Muro), **Draw N** (Brisa), **Detonate** (`consume`, Explosión), `perStack` (Avivar), `vs` (Témpano, Escarcha,
+Filo, Garra oscura), **Tailwind** (Ráfaga: the next card with a cost pays 1 less, unused by free cards, gone at turn end),
+`perCast` (Letanía), `sacrifice` (Pacto), `also.heal` (Aura). Conditionals read the enemy as it is before the cast
+applies its own statuses; none of them fire on a backfire (an Exhaust card is still spent).
+
+Engines, one per element (reactions in §2 cut across them):
+
+- **Fire — build burn, then choose: tick or burst.** Chispa, Ceniza, Hoguera, Llamarada stack burn (Brasa eterna +1,
+  wildfire ×2). Avivar reads the stack (+3 per stack, keeps it); Explosión consumes it (+3 per stack, now). Steam
+  (fire→water) is the tempting mistake: +50 % damage but it clears the burn you were building.
+- **Water — chill, then punish.** Gota, Niebla, Marea, Escarcha chill (and stop charges). Témpano and Escarcha hit ×1.5
+  into Chill: Gota → Témpano is 3 breath for 12 + 30 instead of 12 + 20. Niebla's Weak also feeds shadow.
+- **Wind — tempo.** Brisa draws, Ráfaga's Tailwind makes Vendaval cost 1 (3 breath for 8 + 24), Empujón / Vendaval /
+  storm (water→wind) stagger, Filo de viento hits ×1.5 into Stagger. Muro is the wall you Retain until the charged hit.
+- **Shadow — drain and debt.** Maldición, Sangría, Niebla apply Weak; Garra oscura drains *all* its damage against a
+  Weak enemy; Pacto pays 4 life for 2 breath once per battle and the drains pay it back; dusk (light→shadow) drains everything.
+- **Light — expose and amplify.** Señal (free, once per battle), Destello, Rayo expose (×1.5 to every hit); Aura
+  shields and heals; Foco is a Retained +0.10; Canto, Letanía (+2 per cast this battle) and Metrónomo scale a long
+  fight; Inspiración is the once-per-battle extra turn.
+
+Offers lean toward the deck: each reward/shop slot takes an element already in the deck with probability
+`ELEMENT_OFFER_BIAS` (0.6, weighted by card count), and the last slot is forced off-element when the others all
+matched and some element is still missing, so a fire deck keeps seeing Avivar / Explosión but never loses its way out.
+Relics on the keywords: Páginas de ceniza (Exhaust → +1 breath), Abanico de seda (every draw +1), Marcapáginas (keep
+the costliest unplayed card), Veleta (first card each turn −1), Metrónomo (every 4th cast +1 Strength).
+
+### UI wiring needed (components are owned by the UI agent; the engine is additive, the UI compiles as is)
+
+- `components/screens/battle/Hand.tsx`: `cost={cardCost(run, card)}` instead of `spell.cost`; render `cardTags(card)`
+  as small badges on the card; pass `previewCast(run, spell).bonusText` through `cardHint`.
+- `components/screens/battle/copy.ts` `cardHint`: after the blocker checks add `if (p.bonusText) return p.bonusText;`
+  and, when `p.cost < spell.cost`, `"−1 breath"` (avoid the word "cost": `SpellCard`'s `BAD_HINT` regex treats it as a penalty).
+- `copy.ts` `castSentence`: `r.consumed` → `", detonating 6 burn"`; `r.bonusPower` → `" (+18 from burn)"`; `r.drawn` →
+  `"Draw 1."`; `r.exhausted` → `"It is spent for this battle."`; `r.sacrificed` → `"You pay 4 life."`; `r.costPaid < spell.cost`
+  → `"(1 breath, tailwind)"`. `enemyTurnSentence`: `t.retained` → `"You keep 1 card."`.
+- `components/screens/battle/Incantation.tsx`: when `run.discount > 0` show "Tailwind: your next card costs 1 less"
+  beside the chain / reaction line; the keyboard hint "1–5" becomes "1–9" (Draw can grow the hand).
+- `components/screens/Battle.tsx` `cast()`: `castBlocker` can return `"not enough life"` → notice "Not enough life to pay
+  for that."; `castEffects`: float `r.sacrificed` as `−4` in blood and `r.drawn` as `+1 card`.
+- `components/Game.tsx` `loadRun`: `if (r.version !== RUN_VERSION) return null;` (import `RUN_VERSION`); `mentorCtx.hand`
+  entries: `cost: cardCost(run, card)` and `tags: cardTags(card)`.
+- `RewardScreen` / `MerchantScreen` / `DeckPicker`: `spell.cost` and `cardDesc` are right outside battle (no discounts);
+  `spell.desc` already carries the keywords. Optional: `cardTags` badges there too.

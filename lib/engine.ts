@@ -585,7 +585,7 @@ function rollCards(r: () => number, floor: number, n: number, deck: Card[] = [])
     if (floor <= 1 && tier === 2 && tier2 >= 1) tier = 1;
     let pool = spells.filter((s) => s.tier === tier && !out.includes(s));
     if (!pool.length) continue;
-    const lastSlot = out.length === n - 1, allOwn = out.every((s) => own.some((o) => o.el === s.element));
+    const lastSlot = n > 1 && out.length === n - 1, allOwn = out.every((s) => own.some((o) => o.el === s.element));   // a single-card roll (events) is never forced
     if (own.length && missing.length && lastSlot && allOwn) {
       const off = pool.filter((s) => missing.includes(s.element)); if (off.length) pool = off;
     } else if (own.length && r() < ELEMENT_OFFER_BIAS) {
