@@ -218,8 +218,8 @@ function addRelic(r: Run, id: string) {
 export function newRun(seed = Date.now() % 100000): Run {
   const r = rng(seed);
   const map = generateMap(r);
-  // four basic tier-1 attacks of four different elements, seeded
-  const attacks = shuffle(r, spells.filter((s) => s.tier === 1 && s.cost === 1 && s.rarity === "common" && isDamageKind(s.kind)));
+  // four basic tier-1 attacks of four different elements, seeded (fire and water may come as their cost-2 variant: a breath decision from turn one)
+  const attacks = shuffle(r, spells.filter((s) => s.tier === 1 && s.cost >= 1 && s.rarity === "common" && isDamageKind(s.kind)));
   const starters: Spell[] = [];
   for (const s of attacks) if (starters.length < 4 && !starters.some((x) => x.element === s.element)) starters.push(s);
   const hex = pick(r, spells.filter((s) => s.tier === 1 && s.kind === "hex" && s.cost >= 1));

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import {
   newRun, chooseNode, startBattle, castCard, endTurn, canAct, castBlocker, previewCast, useRedraw, drawPhrase, winBattle,
   takeCard, takeRelic, advance, rest, resolveEvent, pickEventCard, eventOptionAvailable, buyCard, buyRelic, buyRemove, buyUpgrade, leaveShop,
-  cardOf, cardName, cardDesc, intentDamage, pendingReward, HAND_SIZE, BASE_BREATH, START_INK, FLOORS, type Run,
+  cardOf, cardName, cardDesc, cardCost, cardTags, handCards, hasStatus, stacksOf, intentDamage, pendingReward, HAND_SIZE, BASE_BREATH, START_INK, FLOORS, RUN_VERSION, type Run,
 } from "./engine";
 import { spellById, spells } from "@/data/spells";
 import { enemies, enemyById } from "@/data/enemies";
@@ -20,7 +20,10 @@ import { vocabZh } from "@/data/vocab.zh";
 let passed = 0;
 function check(name: string, fn: () => void) {
   try { fn(); passed++; console.log(`  ok   ${name}`); }
-  catch (e) { console.log(`  FAIL ${name}\n       ${(e as Error).message}`); process.exitCode = 1; }
+  catch (e) {
+    const at = ((e as Error).stack ?? "").split("\n").find((l) => l.includes("engine.check.ts"))?.trim();
+    console.log(`  FAIL ${name}\n       ${(e as Error).message}${at ? `\n       ${at}` : ""}`); process.exitCode = 1;
+  }
 }
 
 const W = vocabEs[0];                    // any word will do; scoring is injected
@@ -72,19 +75,22 @@ check("determinism: newRun(123) twice is deep-equal; same calls + same rand → 
   assert.deepEqual(play(), play());
 });
 
-check("newRun: phase map, floor 0, one fight door, 7-card starting deck (3 attack elements, escudo, aliento, susurro, a hex), 30 ink", () => {
+check("newRun: phase map, floor 0, one fight door, 10-card starting deck (4 attack elements, 2 escudo, aliento, susurro, a hex, foco), 30 ink, RUN_VERSION", () => {
   for (const seed of [1, 2, 3, 42, 999]) {
     const r = newRun(seed);
     assert.equal(r.phase, "map"); assert.equal(r.floor, 0); assert.equal(r.ink, START_INK);
+    assert.equal(r.version, RUN_VERSION); assert.deepEqual(r.exhausted, []); assert.equal(r.discount, 0);
     assert.deepEqual(r.map[0].map((n) => n.kind), ["fight"]);
-    assert.equal(r.deck.length, 7);
+    assert.equal(r.deck.length, 10);
     const sp = r.deck.map((c) => spellById(c.spell));
-    const attacks = sp.filter((s) => s.tier === 1 && s.cost === 1 && (s.kind === "attack" || s.kind === "drain"));
-    assert.equal(attacks.length, 3); assert.equal(new Set(attacks.map((s) => s.element)).size, 3);
-    for (const id of ["escudo", "aliento", "susurro"]) assert.ok(sp.some((s) => s.id === id), id);
-    assert.equal(sp.filter((s) => s.kind === "hex").length, 1);
-    assert.equal(new Set(r.deck.map((c) => c.uid)).size, 7);
+    const attacks = sp.filter((s) => s.tier === 1 && s.cost >= 1 && s.rarity === "common" && (s.kind === "attack" || s.kind === "drain"));
+    assert.equal(attacks.length, 4); assert.equal(new Set(attacks.map((s) => s.element)).size, 4);
+    assert.equal(sp.filter((s) => s.id === "escudo").length, 2);
+    for (const id of ["aliento", "susurro", "foco"]) assert.ok(sp.some((s) => s.id === id), id);
+    const hexes = sp.filter((s) => s.kind === "hex"); assert.equal(hexes.length, 1); assert.ok(hexes[0].cost >= 1, "no free hex in the starter");
+    assert.equal(new Set(r.deck.map((c) => c.uid)).size, 10);
   }
+  assert.equal(RUN_VERSION, 2);
 });
 
 check("startBattle: hand = HAND_SIZE, breath = max, turn 1, deck accounted for", () => {
@@ -170,7 +176,7 @@ check("stagger: enemy skips its action, step still advances", () => {
   assert.equal(result.staggered, true); assert.equal(result.enemyHit, 0); assert.equal(r2.hp, r.hp);
   assert.equal(r2.enemy!.step, r.enemy!.step + 1);
   assert.ok(!r2.enemy!.statuses.some((s) => s.id === "stagger"));
-  assert.equal(r2.turn, 2); assert.equal(r2.hand.length, HAND_SIZE); assert.equal(r2.breath, BASE_BREATH);
+  assert.equal(r2.turn, 2); assert.equal(r2.hand.length, Math.min(HAND_SIZE, r.deck.length), "a deck smaller than the hand is drawn whole"); assert.equal(r2.breath, BASE_BREATH);
 });
 
 check("chill: a charging enemy under chill does not become charged", () => {
@@ -313,7 +319,7 @@ check("rest: heal 30%, study upgrades, forget removes; then advance", () => {
   const r = { ...newRun(3), phase: "rest" as const, hp: 20, floor: 2, path: [0, 0, 0] };
   const h = rest(r, "heal"); assert.equal(h.hp, 20 + Math.round(70 * 0.3)); assert.equal(h.phase, "map"); assert.equal(h.floor, 3);
   const s = rest(r, "study", r.deck[0].uid); assert.equal(s.deck[0].up, true);
-  const f = rest(r, "forget", r.deck[0].uid); assert.equal(f.deck.length, 6);
+  const f = rest(r, "forget", r.deck[0].uid); assert.equal(f.deck.length, r.deck.length - 1);
   assert.throws(() => rest(r, "study"));
 });
 
@@ -352,6 +358,150 @@ check("log keeps the last 20 lines, newest last", () => {
   }
   assert.ok(r.log.length <= 20 && r.log.length > 0);
   assert.ok(r.log.every((l) => typeof l === "string" && l.length > 0));
+});
+
+/* ---------- card depth (docs/DESIGN.md §13) ---------- */
+/** Add cards to the deck and the top of the draw pile of a started battle. */
+const withDraw = (run: Run, ids: string[]): Run => {
+  const r = structuredClone(run);
+  ids.forEach((id, i) => { const uid = `x${i + 1}`; r.deck.push({ uid, spell: id, up: false }); r.draw.push(uid); });
+  return r;
+};
+
+check("exhaust: Infierno leaves the deck for the battle (never redrawn) and returns after it; Páginas de ceniza refunds 1 breath", () => {
+  const r0 = battle(["infierno", "chispa", "escudo", "susurro"], "golem");      // 131 hp: survives the Infierno
+  const inf = uidOf(r0, "infierno");
+  assert.deepEqual(cardTags(cardOf(r0, inf)!), ["Exhaust"]); assert.ok(cardDesc(cardOf(r0, inf)!).endsWith("Exhaust."));
+  const { run: r, result } = cast(r0, "infierno");
+  assert.equal(result.exhausted, true); assert.equal(result.costPaid, 3); assert.equal(r.breath, 0);
+  assert.ok(r.exhausted.includes(inf) && !r.discard.includes(inf) && !r.hand.includes(inf));
+  assert.equal(r.hand.length + r.draw.length + r.discard.length + r.exhausted.length, r.deck.length);
+  let t = r;
+  for (let i = 0; i < 3; i++) { t = endTurn({ ...t, hp: 70 }, noCrit).run; assert.ok(!t.hand.includes(inf) && !t.draw.includes(inf), `turn ${t.turn}: Infierno came back`); }
+  const won = winBattle({ ...t, enemy: { ...t.enemy!, hpNow: 0 } });
+  assert.deepEqual(won.exhausted, []); assert.equal(won.deck.length, 4); assert.ok(won.deck.some((c) => c.uid === inf), "the card is still owned");
+  // a backfired Exhaust card is spent too
+  const bf = cast(r0, "infierno", BAD); assert.equal(bf.result.exhausted, true); assert.ok(bf.run.exhausted.includes(inf));
+  // relic: exhausting gives breath
+  const rel = startBattle({ ...newRun(2), deck: r0.deck, relics: ["paginas"] }, "golem");
+  const p = cast(rel, "infierno"); assert.equal(p.run.breath, 1); assert.deepEqual(p.result.gained, { breath: 1 }); assert.equal(p.run.phase, "battle");
+});
+
+check("retain: Foco stays in hand through endTurn and the hand refills to HAND_SIZE; Marcapáginas keeps the costliest unplayed card", () => {
+  const r0 = withDraw(battle(["foco", "chispa", "escudo", "susurro"], "rata"), ["gota", "aliento", "pinchazo"]);
+  const foco = uidOf(r0, "foco");
+  assert.deepEqual(cardTags(cardOf(r0, foco)!), ["Retain"]);
+  const { run: r, result } = endTurn(r0, noCrit);
+  assert.equal(result.retained, 1); assert.ok(r.hand.includes(foco)); assert.equal(r.hand.length, HAND_SIZE, "retained cards count toward the hand");
+  assert.ok(!r.discard.includes(foco));
+  const m = startBattle({ ...newRun(3), deck: r0.deck.slice(0, 4).map((c, i) => ({ ...c, spell: ["chispa", "llamarada", "escudo", "susurro"][i] })), relics: ["marcapaginas"] }, "rata");
+  const llam = uidOf(m, "llamarada");
+  const e2 = endTurn(m, noCrit); assert.ok(e2.run.hand.includes(llam), "costliest card kept"); assert.equal(e2.result.retained, 1);
+});
+
+check("draw: Brisa draws 1 (Abanico de seda: 2), never itself from an empty pile; the hand may exceed HAND_SIZE", () => {
+  const r0 = withDraw(battle(["brisa", "chispa", "escudo", "susurro"], "rata"), ["gota", "aliento"]);
+  assert.deepEqual(cardTags(cardOf(r0, uidOf(r0, "brisa"))!), ["Draw 1"]);
+  const { run: r, result } = cast(r0, "brisa");
+  assert.equal(result.drawn, 1); assert.equal(r.hand.length, r0.hand.length, "−1 cast, +1 drawn"); assert.equal(r.draw.length, 1);
+  const fan = cast({ ...r0, relics: ["abanico"] }, "brisa"); assert.equal(fan.result.drawn, 2); assert.equal(fan.run.hand.length, r0.hand.length + 1);
+  const empty = cast(battle(["brisa", "chispa", "escudo", "susurro"], "rata"), "brisa");
+  assert.equal(empty.result.drawn, 0); assert.equal(empty.run.hand.length, 3); assert.ok(empty.run.discard.includes(uidOf(empty.run, "brisa") ?? empty.run.discard[0]));
+  const bf = cast(r0, "brisa", BAD); assert.equal(bf.result.drawn, 0, "a backfire draws nothing");
+  // a bigger hand: draw with Manga ancha on top of a retained Foco
+  const big = withDraw(battle(["brisa", "foco", "escudo", "susurro"], "rata"), ["gota", "aliento", "chispa"]);
+  assert.equal(cast(big, "brisa").run.hand.length, 4);
+});
+
+check("cardCost / Tailwind: Ráfaga makes the next costed card 1 cheaper (0-cost cards do not consume it); Veleta discounts the first card each turn", () => {
+  const r0 = battle(["rafaga", "vendaval", "escudo", "susurro"], "rata");
+  const vend = cardOf(r0, uidOf(r0, "vendaval"))!, sus = cardOf(r0, uidOf(r0, "susurro"))!;
+  assert.equal(cardCost(r0, vend), 2); assert.equal(previewCast(r0, spellById("vendaval")).cost, 2);
+  assert.deepEqual(cardTags(cardOf(r0, uidOf(r0, "rafaga"))!), ["Tailwind"]);
+  const a = cast(r0, "rafaga");
+  assert.equal(a.result.costPaid, 1); assert.equal(a.run.breath, 2); assert.equal(a.run.discount, 1);
+  assert.equal(cardCost(a.run, vend), 1); assert.equal(previewCast(a.run, spellById("vendaval")).cost, 1); assert.equal(cardCost(a.run, sus), 0);
+  const s = cast(a.run, "susurro"); assert.equal(s.run.discount, 1, "a free card leaves the discount alone");
+  const v = cast(s.run, "vendaval"); assert.equal(v.result.costPaid, 1); assert.equal(v.run.breath, 1); assert.equal(v.run.discount, 0);
+  assert.equal(castBlocker({ ...a.run, breath: 1 }, uidOf(a.run, "vendaval")), null, "castBlocker uses the discounted cost");
+  assert.equal(castBlocker({ ...r0, breath: 1 }, uidOf(r0, "vendaval")), "not enough breath");
+  const bf = cast(r0, "rafaga", BAD); assert.equal(bf.run.discount, 0, "a backfired Ráfaga gives no tailwind");
+  const nt = endTurn({ ...a.run, hp: 70 }, noCrit).run; assert.equal(nt.discount, 0, "discount resets at the new turn");
+  const w = startBattle({ ...newRun(1), deck: r0.deck, relics: ["veleta"] }, "rata");
+  assert.equal(w.discount, 1); assert.equal(cardCost(w, cardOf(w, uidOf(w, "vendaval"))!), 1);
+  const w2 = endTurn({ ...cast(w, "vendaval").run, hp: 70 }, noCrit).run; assert.equal(w2.discount, 1, "Veleta again next turn");
+});
+
+check("detonate: Explosión consumes all burn for +3 per stack; Avivar gets +3 per stack and keeps the burn; previewCast hints both", () => {
+  let r = battle(["explosion", "avivar", "ceniza", "susurro"], "rata");
+  r = { ...r, enemy: { ...r.enemy!, statuses: [{ id: "burn", stacks: 6, turns: 3 }] } };
+  const pv = previewCast(r, spellById("explosion")); assert.equal(pv.bonusPower, 18); assert.equal(pv.bonusText, "detonate 6 Burn: +18"); assert.equal(pv.cost, 2);
+  assert.equal(previewCast(r, spellById("avivar")).bonusText, "+18 from Burn");
+  assert.deepEqual(cardTags(cardOf(r, uidOf(r, "explosion"))!), ["Detonate"]);
+  const av = cast(r, "avivar");
+  assert.equal(av.result.bonusPower, 18); assert.equal(av.result.damage, Math.round((8 + 18) * 1.4)); assert.equal(stacksOf(av.run.enemy!.statuses, "burn"), 6, "Avivar keeps the burn");
+  const ex = cast(av.run, "explosion");                       // fire chain 2: ×1.15
+  assert.deepEqual(ex.result.consumed, { status: "burn", stacks: 6 }); assert.equal(ex.result.bonusPower, 18);
+  assert.equal(ex.result.damage, Math.round((10 + 18) * 1.4 * 1.15)); assert.ok(!hasStatus(ex.run.enemy!.statuses, "burn"), "burn consumed");
+  const plain = cast(battle(["explosion", "chispa", "escudo", "susurro"], "rata"), "explosion");
+  assert.equal(plain.result.damage, Math.round(10 * 1.4)); assert.equal(plain.result.consumed, undefined); assert.equal(plain.result.bonusPower, 0);
+  const bf = cast(r, "explosion", BAD); assert.equal(stacksOf(bf.run.enemy!.statuses, "burn"), 6, "a backfire consumes nothing");
+});
+
+check("conditionals: Témpano ×1.5 vs Chilled, Garra drains all vs Weak, Aura shields and heals, Pacto pays life for breath, Letanía grows per cast, Metrónomo", () => {
+  const r0 = { ...battle(["tempano", "garra", "aura", "pacto", "letania"], "limo"), hp: 40 };   // limo: weak to fire only, so no ×2 here
+  const t0 = cast(r0, "tempano"); assert.equal(t0.result.vsBonus, false); assert.equal(t0.result.damage, Math.round(20 * 1.4));
+  const chilled = { ...r0, enemy: { ...r0.enemy!, statuses: [{ id: "chill" as const, stacks: 1, turns: 2 }, { id: "weak" as const, stacks: 1, turns: 2 }] } };
+  const pv = previewCast(chilled, spellById("tempano")); assert.ok(Math.abs(pv.bonusMult - 1.5) < 1e-9 && Math.abs(pv.mult - 1.5) < 1e-9); assert.equal(pv.bonusText, "×1.5 vs Chilled");
+  const t1 = cast(chilled, "tempano"); assert.equal(t1.result.vsBonus, true); assert.equal(t1.result.damage, Math.round(20 * 1.4 * 1.5));
+  const g = cast({ ...chilled, hp: 20 }, "garra"); assert.equal(g.result.healed, g.result.damage, "drains all vs weak"); assert.equal(previewCast(chilled, spellById("garra")).bonusText, "drains all vs Weak");
+  const g0 = cast(r0, "garra"); assert.equal(g0.result.healed, Math.round(g0.result.damage * 0.5));
+  const a = cast(r0, "aura"); assert.equal(a.result.shielded, Math.round(8 * 1.4)); assert.equal(a.result.healed, Math.round(4 * 1.4)); assert.equal(a.run.hp, 40 + Math.round(4 * 1.4));
+  assert.equal(cardDesc(cardOf(r0, uidOf(r0, "aura"))!), "Shield 8. Heal 4.");
+  const p = cast(r0, "pacto");
+  assert.equal(p.result.sacrificed, 4); assert.equal(p.run.hp, 36); assert.equal(p.run.breath, 5); assert.deepEqual(p.result.gained, { breath: 2 }); assert.equal(p.result.exhausted, true); assert.equal(p.result.costPaid, 0);
+  assert.equal(castBlocker({ ...r0, hp: 4 }, uidOf(r0, "pacto")), "not enough life"); assert.equal(castBlocker({ ...r0, hp: 5 }, uidOf(r0, "pacto")), null);
+  assert.equal(cardDesc(cardOf(r0, uidOf(r0, "pacto"))!), "Lose 4 life. Gain 2 breath. Exhaust.");
+  assert.equal(cardDesc({ ...cardOf(r0, uidOf(r0, "pacto"))!, up: true }), "Lose 2 life. Gain 2 breath. Exhaust.");
+  const l0 = cast(r0, "letania"); assert.equal(l0.result.damage, Math.round(6 * 1.4)); assert.equal(l0.result.bonusPower, 0);
+  const l1 = cast(t0.run, "letania"); assert.equal(l1.result.bonusPower, 2); assert.equal(l1.result.damage, Math.round(8 * 1.4)); assert.equal(previewCast(t0.run, spellById("letania")).bonusText, "+2 from casts");
+  const bfLet = cast(r0, "letania", BAD); assert.equal(bfLet.result.bonusPower, 0); assert.equal(bfLet.result.sacrificed, 0);
+  // Metrónomo: every 4th cast in a battle gives Strength 1
+  let m = startBattle({ ...newRun(4), deck: Array.from({ length: 6 }, (_, i) => ({ uid: `c${i + 1}`, spell: "susurro", up: false })), relics: ["metronomo"] }, "rata");
+  for (let i = 0; i < 3; i++) m = castCard(m, m.hand[0], W, GOOD, 1800, false, noCrit).run;
+  assert.equal(stacksOf(m.statuses, "strength"), 0);
+  const fourth = castCard(m, m.hand[0], W, GOOD, 1800, false, noCrit);
+  assert.equal(stacksOf(fourth.run.statuses, "strength"), 1); assert.ok(fourth.result.applied.some((x) => x.status === "strength" && x.target === "self"));
+});
+
+check("offers lean toward the deck's elements (60%) with at least one way out; deterministic per seed", () => {
+  let fire = 0, total = 0;
+  for (let seed = 1; seed <= 60; seed++) {
+    let r = battle(["chispa", "chispa", "ceniza", "llamarada", "hoguera", "escudo"], "rata", seed);
+    r = { ...r, floor: 2, enemy: { ...r.enemy!, hpNow: 0 } };
+    const w = winBattle(r), els = w.rewards!.cards.map((s) => s.element);
+    assert.equal(els.length, 3); assert.ok(els.some((e) => e !== "fire"), `seed ${seed}: no off-element offer`);
+    assert.deepEqual(winBattle(r).rewards!.cards.map((s) => s.id), w.rewards!.cards.map((s) => s.id), "deterministic");
+    fire += els.filter((e) => e === "fire").length; total += els.length;
+  }
+  assert.ok(fire / total >= 0.4 && fire / total <= 0.75, `fire share ${fire}/${total}`);
+  // a deck with every element gets no forced slot and still rolls 3 distinct cards
+  const all = battle(["chispa", "gota", "brisa", "pinchazo", "destello"], "rata");
+  const w = winBattle({ ...all, enemy: { ...all.enemy!, hpNow: 0 } }); assert.equal(new Set(w.rewards!.cards.map((s) => s.id)).size, 3);
+});
+
+check("starter: the first hand is not fully affordable in ≥ 60% of 200 seeded runs; old saves get exhausted/discount defaults", () => {
+  let short = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const r = chooseNode(newRun(seed), 0);
+    assert.equal(r.hand.length, HAND_SIZE);
+    const total = handCards(r).reduce((a, h) => a + cardCost(r, h.card), 0);
+    if (total > r.breath) short++;
+  }
+  assert.ok(short >= 120, `${short}/200 first hands exceed the breath`);
+  const old = chooseNode(newRun(1), 0) as Partial<Run>; delete old.exhausted; delete old.discount;
+  const t = endTurn(old as Run, noCrit).run; assert.deepEqual(t.exhausted, []); assert.equal(t.discount, 0);
+  const c = castCard(old as Run, (old as Run).hand.find((u) => !castBlocker(old as Run, u))!, W, GOOD, 1800, false, noCrit).run; assert.deepEqual(c.exhausted, []);
 });
 
 console.log(process.exitCode ? `\n${passed} passed, some FAILED` : `\nall ${passed} checks passed`);
