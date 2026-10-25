@@ -15,35 +15,35 @@ export type DoorCardProps = {
   className?: string;
 };
 
-type DoorMeta = { label: string; color: string; danger: 0 | 1 | 2; icon: ReactElement };
+type DoorMeta = { label: string; color: string; danger: 0 | 1 | 2; icon: ReactElement; /** One sentence for the tooltip and the Handbook. */ hint: string };
 
 export const DOOR_META: Record<NodeKind, DoorMeta> = {
   fight: {
-    label: "fight", color: PALETTE.ember, danger: 0,
+    label: "fight", color: PALETTE.ember, danger: 0, hint: "A battle. Win it for ink and the pick of a new card.",
     icon: <><path d="M8 16 19 5M6.5 14.5l3 3M5 19l2.5-2.5" /><path d="M16 16 5 5M17.5 14.5l-3 3M19 19l-2.5-2.5" /></>,
   },
   elite: {
-    label: "elite", color: PALETTE.blood, danger: 1,
+    label: "elite", color: PALETTE.blood, danger: 1, hint: "A harder battle with a better reward behind it.",
     icon: <><path d="M4 18h16l1-9-5 3-4-6-4 6-5-3Z" /><path d="M4 21h16" /></>,
   },
   rest: {
-    label: "rest", color: PALETTE.moss, danger: 0,
+    label: "rest", color: PALETTE.moss, danger: 0, hint: "No fight. Heal 30 % of your life, study a card (upgrade it) or forget one (remove it).",
     icon: <><path d="M12 2.5c2 3.5 5 5 5 9a5 5 0 0 1-10 0c0-2.5 1.2-4 2.5-5.5.6 1.8 1.5 2.5 2.5 2.5 0-2.5-1-4 0-6Z" /><path d="M6 21.5 18 17M18 21.5 6 17" /></>,
   },
   event: {
-    label: "event", color: ELEMENT_HEX.shadow, danger: 0,
+    label: "event", color: ELEMENT_HEX.shadow, danger: 0, hint: "An encounter: a few choices, some of them trials that test a single phrase.",
     icon: <><path d="M8.5 9a3.5 3.5 0 1 1 5 3.2c-1.2.7-1.5 1.4-1.5 2.8" /><path d="M12 18.5v.5" /><path d="M3.5 12a8.5 8.5 0 1 0 17 0 8.5 8.5 0 1 0-17 0Z" opacity=".35" /></>,
   },
   merchant: {
-    label: "merchant", color: ELEMENT_HEX.light, danger: 0,
+    label: "merchant", color: ELEMENT_HEX.light, danger: 0, hint: "Spend your ink on cards and relics.",
     icon: <><ellipse cx="12" cy="7" rx="6.5" ry="2.6" /><path d="M5.5 7v9c0 1.5 2.9 2.6 6.5 2.6s6.5-1.1 6.5-2.6V7" /><path d="M5.5 11.5c0 1.5 2.9 2.6 6.5 2.6s6.5-1.1 6.5-2.6" /></>,
   },
   boss: {
-    label: "boss", color: PALETTE.blood, danger: 2,
+    label: "boss", color: PALETTE.blood, danger: 2, hint: "The guardian of the middle floor: tougher, slower to fall, with a relic behind it.",
     icon: <><path d="M12 3a7 7 0 0 0-7 7c0 2.5 1.2 4.3 3 5.5V19h8v-3.5c1.8-1.2 3-3 3-5.5a7 7 0 0 0-7-7Z" /><circle cx="9.5" cy="11" r="1.4" fill="currentColor" stroke="none" /><circle cx="14.5" cy="11" r="1.4" fill="currentColor" stroke="none" /><path d="M10 19v2M12 19v2M14 19v2M5.5 6.5C3.5 5 3 3 3.5 1.5M18.5 6.5c2-1.5 2.5-3.5 2-5" /></>,
   },
   final: {
-    label: "the end", color: "#c9c2e3", danger: 2,
+    label: "the end", color: "#c9c2e3", danger: 2, hint: "The last door. Beat what waits behind it and the run is won.",
     icon: <path d="M12 12a1 1 0 0 1 1 1 2 2 0 0 1-2 2 3 3 0 0 1-3-3 4 4 0 0 1 4-4 5 5 0 0 1 5 5 6 6 0 0 1-6 6 7 7 0 0 1-7-7 8 8 0 0 1 8-8 9 9 0 0 1 9 9" />,
   },
 };
@@ -55,7 +55,7 @@ export default function DoorCard({ kind, title, subtitle, italic = true, lang, o
   const zh = lang === "zh";
   return (
     <button
-      type="button" onClick={onClick} disabled={disabled} aria-label={`${m.label}: ${title}${subtitle ? `, ${subtitle}` : ""}`}
+      type="button" onClick={onClick} disabled={disabled} aria-label={`${m.label}: ${title}${subtitle ? `, ${subtitle}` : ""}`} title={`${m.label[0].toUpperCase()}${m.label.slice(1)}: ${m.hint}`}
       className={`group relative flex h-[200px] w-[140px] shrink-0 flex-col items-center overflow-hidden rounded-b-xl rounded-t-[70px] bg-dusk text-center ring-1 ring-white/10 transition duration-200 ease-out hover:-translate-y-1 hover:ring-white/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 ${className}`}
       style={{
         backgroundImage: `radial-gradient(60% 50% at 50% 30%, ${rgba(c, m.danger ? 0.34 : 0.26)}, transparent 72%), linear-gradient(180deg, rgba(236,226,205,.05), rgba(0,0,0,.28))`,

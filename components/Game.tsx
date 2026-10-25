@@ -31,6 +31,8 @@ import EventScreen from "./screens/EventScreen";
 import MerchantScreen from "./screens/MerchantScreen";
 import End from "./screens/End";
 import Mentor, { type MentorCtx } from "./Mentor";
+import Handbook from "./Handbook";
+import { HANDBOOK_EVENT } from "@/components/fx";
 
 /* ---------- the saved run: one per language ---------- */
 
@@ -70,6 +72,7 @@ export default function Game() {
   const [selection, setSelection] = useState<BattleSelection | null>(null);   // the card + incantation on screen, for Eco
   const [backfires, setBackfires] = useState(0);           // nudges Eco's orb
   const [growNote, setGrowNote] = useState<string | null>(null);
+  const [handbook, setHandbook] = useState(false);          // the symbols/rules overlay: HelpButton event, "?" key
 
   const lastGrown = useRef(-1);                            // floor the lexicon last grew on (this run)
   const growing = useRef(false);
@@ -94,6 +97,21 @@ export default function Game() {
 
   /* one sound when a run ends; the End screen itself stays quiet */
   useEffect(() => { if (run?.phase === "won") playSfx("win"); else if (run?.phase === "dead") playSfx("lose"); }, [run?.phase]);
+
+  /* the Handbook: any HelpButton raises HANDBOOK_EVENT; "?" toggles it (not while typing) */
+  useEffect(() => {
+    const open = () => setHandbook(true);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.key !== "?") return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      setHandbook((v) => !v);
+    };
+    window.addEventListener(HANDBOOK_EVENT, open);
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener(HANDBOOK_EVENT, open); window.removeEventListener("keydown", onKey); };
+  }, []);
 
   /* vocab growth: once per floor, when the map comes up */
   useEffect(() => {
@@ -202,10 +220,13 @@ export default function Game() {
   if (!ready) return <div className="min-h-[60vh]" aria-busy="true" />;
   if (!run) {
     return (
-      <Title
-        lang={lang} onLang={switchLang} lexicon={lexicon} words={words} saved={saved}
-        onContinue={resume} onBegin={begin} micOk={micOk} useTyping={useTyping} onUseTyping={setUseTyping}
-      />
+      <>
+        <Title
+          lang={lang} onLang={switchLang} lexicon={lexicon} words={words} saved={saved}
+          onContinue={resume} onBegin={begin} micOk={micOk} useTyping={useTyping} onUseTyping={setUseTyping}
+        />
+        {handbook && <Handbook lang={lang} onClose={() => setHandbook(false)} />}
+      </>
     );
   }
 
@@ -250,6 +271,7 @@ export default function Game() {
     <>
       {screen}
       <Mentor ctx={mentorCtx} nudge={backfires} />
+      {handbook && <Handbook lang={lang} onClose={() => setHandbook(false)} />}
       {growNote && (
         <div role="status" className="fixed bottom-6 left-6 z-30 rounded-full bg-dusk/90 px-3 py-1.5 text-xs text-moss ring-1 ring-white/10 animate-reveal">
           {growNote}

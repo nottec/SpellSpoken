@@ -4,7 +4,7 @@
  * The quiet strip every non-battle screen shares: route so far, floor, life, ink, breath,
  * relics (hover for the rule), and on the map a Deck button.
  */
-import { HpBar, InkCounter, PathStrip, Ruby, SfxToggle } from "@/components/fx";
+import { HpBar, InkCounter, PathStrip, Ruby, SfxToggle, HelpButton } from "@/components/fx";
 import { FLOORS, relicsOf, type Run } from "@/lib/engine";
 import { LANGS, type LangId } from "@/lib/lang";
 import { relicName } from "@/data/relics";
@@ -28,13 +28,14 @@ export default function RunHeader({ run, lang, floorLabel = true, inkDelta, onDe
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         <div className="flex flex-wrap items-center gap-3">
           <PathStrip floors={run.map.map((f) => f.map((n) => n.kind))} path={run.path} floor={run.floor} />
-          {floorLabel && <span>Floor {Math.min(run.floor + 1, FLOORS)} of {FLOORS}</span>}
+          {floorLabel && <span className="cursor-help" title={`${FLOORS} floors, one life: the boss waits on floor 4, the last door is floor ${FLOORS}.`}>Floor {Math.min(run.floor + 1, FLOORS)} of {FLOORS}</span>}
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
           <HpBar value={run.hp} max={run.maxHp} label="Life" className="w-44" />
           <InkCounter value={run.ink} delta={inkDelta} />
-          <span title="breath per turn"><span className="font-display text-base text-vellum">{run.maxBreath}</span> breath</span>
+          <span className="cursor-help" title={`Breath ${run.maxBreath} a turn: every card costs breath; it refills at the start of each turn.`}><span className="font-display text-base text-vellum">{run.maxBreath}</span> breath</span>
           <SfxToggle />
+          <HelpButton />
         </div>
       </div>
       {(relics.length > 0 || onDeck) && (

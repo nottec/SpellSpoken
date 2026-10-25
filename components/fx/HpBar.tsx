@@ -16,7 +16,7 @@ export default function HpBar({ value, max, color = "moss", label, ghost = true,
   const pct = max > 0 ? (v / max) * 100 : 0;
   const low = max > 0 && v / max <= 0.25;
   return (
-    <div className={`flex items-center gap-2 text-xs text-vellum2 ${className}`}>
+    <div className={`flex items-center gap-2 text-xs text-vellum2 ${className}`} title={`${label ?? "Life"} ${Math.round(v)} of ${max}${color === "moss" ? ": at 0 the run ends. A rest heals 30 %." : ""}`}>
       {label && <span className="shrink-0">{label}</span>}
       <div
         className="relative h-2 min-w-[64px] flex-1 overflow-hidden rounded-full bg-black/40"

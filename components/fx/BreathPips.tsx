@@ -14,8 +14,9 @@ export default function BreathPips({ current, max, className = "" }: BreathPipsP
   const n = Math.max(0, Math.max(max, current));
   return (
     <span
-      className={`inline-flex items-center gap-1 ${className}`} role="meter"
-      aria-valuenow={current} aria-valuemin={0} aria-valuemax={max} aria-label={`${current} of ${max} breath`} title={`${current} / ${max} breath`}
+      className={`inline-flex cursor-help items-center gap-1 ${className}`} role="meter"
+      aria-valuenow={current} aria-valuemin={0} aria-valuemax={max} aria-label={`${current} of ${max} breath`}
+      title={`Breath ${current} of ${max}: every card costs breath (the gem on the card); it refills when the turn ends.`}
     >
       {Array.from({ length: n }, (_, i) => <Gem key={i} lit={i < current} />)}
     </span>

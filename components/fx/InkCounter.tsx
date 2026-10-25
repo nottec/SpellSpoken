@@ -20,12 +20,16 @@ export default function InkCounter({ value, delta, className = "" }: InkCounterP
   }, [value, delta]);
 
   return (
-    <span className={`relative inline-flex items-center gap-1.5 font-display text-base text-vellum ${className}`} title={`${value} ink`} aria-label={`${value} ink`}>
+    <span
+      className={`relative inline-flex cursor-help items-center gap-1.5 font-display text-base text-vellum ${className}`}
+      title={`Ink ${value}: the merchant's currency. Enemies drop it, and the better you pronounce during the fight, the more they drop.`} aria-label={`${value} ink`}
+    >
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden>
         <path d="M8 1.2C6 4.6 3.6 7 3.6 10.2a4.4 4.4 0 0 0 8.8 0C12.4 7 10 4.6 8 1.2Z" fill="#b19ad9" />
         <path d="M6 10.6a2 2 0 0 0 1.4 1.9" stroke="#ece2cd" strokeWidth="1" strokeLinecap="round" fill="none" opacity=".7" />
       </svg>
       <span className="tabular-nums">{value}</span>
+      <span className="font-sans text-xs text-vellum2" aria-hidden>ink</span>
       {pop && (
         <span key={pop.id} className={`fx-pop font-display text-sm font-semibold ${pop.v > 0 ? "text-moss" : "text-blood"}`} aria-hidden>
           {pop.v > 0 ? `+${pop.v}` : `−${Math.abs(pop.v)}`}

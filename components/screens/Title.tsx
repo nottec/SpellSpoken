@@ -13,7 +13,7 @@ import type { Vocab } from "@/data/vocab";
 import { spells } from "@/data/spells";
 import { enemies } from "@/data/enemies";
 import { relics } from "@/data/relics";
-import { EnemySprite, Ruby, Sigil, SpellCard, type Element } from "@/components/fx";
+import { EnemySprite, Ruby, Sigil, SpellCard, HelpButton, type Element } from "@/components/fx";
 
 export type TitleProps = {
   lang: LangId;
@@ -231,6 +231,9 @@ export default function Title({ lang, onLang, lexicon, words, saved, onContinue,
           type instead of speak
         </label>
         {!micOk && <p className="text-ember">This browser can&apos;t hear you. Typing mode is on; open Chrome for voice.</p>}
+        <div className="mt-1 flex justify-center">
+          <HelpButton label="Handbook: symbols, resources, the map" />
+        </div>
       </div>
     </div>
   );

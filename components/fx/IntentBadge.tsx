@@ -30,8 +30,8 @@ export type IntentBadgeProps = {
 type Tone = "ember" | "blood" | "shadow" | "moss" | "stone";
 const TONE_HEX: Record<Tone, string> = { ember: PALETTE.ember, blood: PALETTE.blood, shadow: ELEMENT_HEX.shadow, moss: PALETTE.moss, stone: PALETTE.vellum2 };
 
-/** 24×24 stroke glyphs, drawn with currentColor. */
-const ICON: Record<IntentId, ReactElement> = {
+/** 24×24 stroke glyphs, drawn with currentColor (also drawn by the Handbook's legend). */
+export const INTENT_ICON: Record<IntentId, ReactElement> = {
   attack: <><path d="M5 19 17 7M14 4l6 6M4 20l3-1 1-3" /><path d="M16 5.5 18.5 8" /></>,
   double: <><path d="M4 20 16 8M13 5l6 6M3 21l3-1 1-3" /><path d="M20 20 8 8M11 5 5 11M21 21l-3-1-1-3" /></>,
   charge: <><path d="M12 21V9M6 15l6-6 6 6" /><path d="M6 8l6-6 6 6" opacity=".55" /></>,
@@ -77,7 +77,7 @@ export default function IntentBadge({ intent, amount = 0, charged = false, shiel
       role="status" aria-label={aria}
     >
       <span className="fx-intent-icon" aria-hidden>
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{ICON[intent]}</svg>
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{INTENT_ICON[intent]}</svg>
       </span>
       {big !== null && <span className="fx-intent-num font-display" aria-hidden>{big}</span>}
       <span className="min-w-0 flex-1 text-left">
