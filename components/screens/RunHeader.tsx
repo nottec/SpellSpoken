@@ -4,7 +4,7 @@
  * The quiet strip every non-battle screen shares: route so far, floor, life, ink, breath,
  * relics (hover for the rule), and on the map a Deck button.
  */
-import { HpBar, InkCounter, PathStrip, Ruby } from "@/components/fx";
+import { HpBar, InkCounter, PathStrip, Ruby, SfxToggle } from "@/components/fx";
 import { FLOORS, relicsOf, type Run } from "@/lib/engine";
 import { LANGS, type LangId } from "@/lib/lang";
 import { relicName } from "@/data/relics";
@@ -34,6 +34,7 @@ export default function RunHeader({ run, lang, floorLabel = true, inkDelta, onDe
           <HpBar value={run.hp} max={run.maxHp} label="Life" className="w-44" />
           <InkCounter value={run.ink} delta={inkDelta} />
           <span title="breath per turn"><span className="font-display text-base text-vellum">{run.maxBreath}</span> breath</span>
+          <SfxToggle />
         </div>
       </div>
       {(relics.length > 0 || onDeck) && (

@@ -12,4 +12,7 @@ export { default as PathStrip, type PathStripProps } from "./PathStrip";
 export { default as InkCounter, type InkCounterProps } from "./InkCounter";
 export { default as LogPanel, type LogPanelProps } from "./LogPanel";
 export { default as Ruby, withPinyin, pinyinOf, hasHan, type RubyProps } from "./Ruby";
+export { useStageFx, REACTION_CALLOUT, type StageFxApi, type StrikeOpts, type CalloutTone, type ShakeIntensity } from "./StageFx";
+export { default as IntentBadge, type IntentBadgeProps } from "./IntentBadge";
+export { default as SfxToggle, type SfxToggleProps } from "./SfxToggle";
 export { ELEMENT_HEX, ELEMENT_LABEL, PALETTE, LANG_TAG, LANG_ITALIC, rgba, type Element, type SpellKind, type EnemyKind, type NodeKind, type StatusId, type LangId, type IntentId, type ReactionId } from "./types";
