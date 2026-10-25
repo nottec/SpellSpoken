@@ -31,12 +31,6 @@ export type TitleProps = {
 
 const WORDMARK = "SpellSpoken";
 
-const HOW_TO = [
-  "Each turn you have 3 breath. Cards cost breath; say the words to cast, and the better you say them, the harder they hit.",
-  "Chain one element for +15% a step, or pair them: fire after wind is wildfire, water after fire is steam.",
-  "Words that beat you come back until you beat them; three clean casts master a word for good.",
-];
-
 /** Five of the forty spells, one per element, fanned like a hand. The outer two hide on narrow screens. */
 const FAN: { spell: string; rot: number; dy: number; outer?: boolean }[] = [
   { spell: "susurro", rot: -16, dy: 28, outer: true },
@@ -218,11 +212,7 @@ export default function Title({ lang, onLang, lexicon, words, saved, onContinue,
         </li>
       </ul>
 
-      <div className="title-rise mt-10 grid max-w-md gap-2 text-sm text-vellum2" style={rise(1.45)}>
-        {HOW_TO.map((line) => <p key={line}>{line}</p>)}
-      </div>
-
-      <div className="title-rise mt-8 grid gap-2 text-sm text-vellum2" style={rise(1.5)}>
+      <div className="title-rise mt-10 grid gap-2 text-sm text-vellum2" style={rise(1.45)}>
         {practiced > 0 && (
           <p className="text-vellum">{practiced} {practiced === 1 ? "word" : "words"} practiced, {mastered} mastered.</p>
         )}
@@ -231,8 +221,8 @@ export default function Title({ lang, onLang, lexicon, words, saved, onContinue,
           type instead of speak
         </label>
         {!micOk && <p className="text-ember">This browser can&apos;t hear you. Typing mode is on; open Chrome for voice.</p>}
-        <div className="mt-1 flex justify-center">
-          <HelpButton label="Handbook: symbols, resources, the map" />
+        <div className="mt-2 flex justify-center">
+          <HelpButton label="How to play · symbols · the map" className="px-3 py-1.5 text-sm" />
         </div>
       </div>
     </div>

@@ -54,14 +54,19 @@ export default function Incantation(p: IncantationProps) {
       {ready && card && spell && phrase ? (
         <div key={`${card.uid}:${phrase.id}`} className="animate-reveal">
           <p className="text-xs text-vellum2">
-            <Ruby text={cardName(card, lang)} lang={lang} italic={L.italic} className="font-display text-sm text-vellum" /> draws from the lexicon · {phrase.theme}
+            casting <Ruby text={cardName(card, lang)} lang={lang} italic={L.italic} className="font-display text-sm text-vellum" />
             {run.cursed && <span className="text-shadow"> · cursed, one level harder</span>}
             {run.grudges.includes(phrase.id) && <span className="text-blood"> · a word that beat you</span>}
             {isWordMastered(words, phrase.id) && <span className="text-light"> · mastered</span>}
           </p>
+          {/* The phrase is upright and tagged, so it never reads like the card's italic name. */}
+          <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-ember/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.22em] text-ember ring-1 ring-ember/30">
+            <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden><rect x="5.5" y="1.5" width="5" height="8" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2M5.5 14.5h5" /></svg>
+            say this to cast
+          </p>
           <h1
             lang={L.speech}
-            className={`mt-2 text-balance font-display text-5xl font-light leading-tight tracking-tight md:text-6xl ${L.italic ? "italic" : ""} ${listening ? "animate-breathe text-ember" : "text-vellum"}`}
+            className={`mt-1 text-balance font-display text-5xl font-normal leading-tight tracking-tight md:text-6xl ${listening ? "animate-breathe text-ember" : "text-vellum"}`}
           >
             {phrase.text}
           </h1>
@@ -115,7 +120,7 @@ export default function Incantation(p: IncantationProps) {
             <label className="inline-flex cursor-pointer items-center gap-2">
               <input type="checkbox" className="accent-ember" checked={useTyping} onChange={(e) => p.onUseTyping(e.target.checked)} disabled={listening} /> type instead of speak
             </label>
-            <span className="hidden sm:inline"><Key k="Space" /> cast · <Key k="H" /> hear · <Key k="R" /> redraw · <Key k="E" /> end turn · <Key k="1–9" /> cards</span>
+            <span className="hidden sm:inline"><Key k="?" /> handbook and keys</span>
           </div>
 
           {notice && (
