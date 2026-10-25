@@ -98,8 +98,8 @@ pieces of recognizer evidence:
   of the target's token length (characters in `char` mode, words in `word` mode) over the heard
   tokens. Leftover tokens that are themselves repetitions of the target (each block ≥ 0.75) are
   free; other material costs ×0.9. `missedWords` looks only at the matched window.
-- **rank factor** by position in the recognizer's list: 1 / 0.9 / 0.82 / 0.78 for the 1st / 2nd /
-  3rd / 4th+ guess. An early snapshot counts as rank 0.
+- **rank factor** by position in the recognizer's list: 1 / 0.88 / 0.82 / 0.78 for the 1st / 2nd /
+  3rd / 4th+ guess, so only the recognizer's top guess can be Perfecto. An early snapshot counts as rank 0.
 - **confidence factor** `0.75 + 0.25 × confidence` when the recognizer gave one (finals, top guess);
   0 / unknown means no factor.
 
@@ -122,15 +122,14 @@ bonuses on top.
 | gato      | gato (top final, 0.5)                    | 1.00  | 1     | 0.875 | 0.875 | Bien         |
 | gato      | gato (top final, 0.6)                    | 1.00  | 1     | 0.90  | 0.90  | Perfecto     |
 | gato      | cato / pato / **gato** (3rd guess)        | 1.00  | 0.82  | –     | 0.82  | Bien         |
-| gato      | pato / **gato** (2nd guess)               | 1.00  | 0.9   | –     | 0.90  | Perfecto (the floor) |
+| gato      | pato / **gato** (2nd guess)               | 1.00  | 0.88  | –     | 0.88  | Bien         |
 | el gato   | un el gato negro (top final, 0.8)        | 0.90  | 1     | 0.95  | 0.855 | Bien         |
 | fuego     | juego                                    | 0.47  | 1     | –     | 0.47  | Más o menos  |
 
 What this means for the two reported bugs: a one-syllable Mandarin word said once ends the capture
 on the interim and scores 1.0 (or 1.0 × confidence on the final); said twice it still scores as one
 clean 心. A Spanish word read with English vowels can only reach Perfecto if the recognizer's *top*
-guess is the target *and* its confidence is ≥ 0.6; as a second guess it sits exactly at the floor,
-as a third it cannot. That is all the client can know; the coaching line (§3) is asked to name the
+guess is the target *and* its confidence is ≥ 0.6; as a second or later guess it cannot. That is all the client can know; the coaching line (§3) is asked to name the
 anglicised vowel or tone contour, and never touches the score.
 
 Other rules the capture layer relies on the UI for:

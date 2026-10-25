@@ -73,11 +73,12 @@ check("the window never lowers a score: plain similarity stays the floor; a wron
   assert.equal(matchDetail("gato", "gato").leftover, "none");
 });
 
-check("bestMatch rank factor: 2nd guess 0.90, 3rd ≤ 0.82, 4th+ 0.78; an early snapshot is rank 0", () => {
+check("bestMatch rank factor: 2nd guess 0.88 (Bien), 3rd ≤ 0.82, 4th+ 0.78; an early snapshot is rank 0", () => {
   const third = bestMatch([alt("cato"), alt("pato"), alt("gato")], "gato");
   assert.equal(third.transcript, "gato"); assert.equal(third.rank, 2); assert.ok(third.score <= 0.82 && third.score > 0.8, `${third.score}`);
   assert.equal(grade(third.score).label, "Bien", "a third guess is never Perfecto");
-  near(bestMatch([alt("pato"), alt("gato")], "gato").score, 0.9);
+  near(bestMatch([alt("pato"), alt("gato")], "gato").score, 0.88);
+  assert.equal(grade(bestMatch([alt("pato"), alt("gato")], "gato").score).label, "Bien", "a second guess is never Perfecto");
   near(bestMatch([alt("cato"), alt("pato"), alt("dato"), alt("gato")], "gato").score, 0.78);
   near(bestMatch([alt("cato"), alt("pato"), alt("dato"), alt("rato"), alt("gato")], "gato").score, 0.78);
   const early = bestMatch([alt("cato", 0.8), alt("gato", 0, true)], "gato");

@@ -174,20 +174,20 @@ export type Match = {
  * Rank factor by the alternative's position in the recognizer's list. The target being only the
  * recognizer's third guess means the audio sounded more like two other things first.
  */
-const RANK_FACTOR = [1, 0.9, 0.82, 0.78];
+const RANK_FACTOR = [1, 0.88, 0.82, 0.78];
 /** Chrome reports confidence on final results only; interims and non-top alternatives carry 0 = unknown → no factor. */
 const confidenceFactor = (c: number) => (c > 0 ? 0.75 + 0.25 * Math.min(1, c) : 1);
 
 /**
  * Pick the best of several recognizer alternatives. Each is scored with `matchDetail`, then
- * multiplied by its rank factor (1 / 0.9 / 0.82 / 0.78 for the 1st / 2nd / 3rd / later guess;
+ * multiplied by its rank factor (1 / 0.88 / 0.82 / 0.78 for the 1st / 2nd / 3rd / later guess;
  * an early-accept snapshot counts as rank 0) and, when the recognizer gave a confidence, by
  * 0.75 + 0.25 × confidence.
  *
  * Resulting bands for a perfect transcript (grade: Perfecto ≥ 0.9, Bien ≥ 0.75, backfire < 0.45):
  *   top guess, confidence ≥ 0.6 (or unknown)  → ≥ 0.90  Perfecto
  *   top guess, confidence 0.5 / 0.3 / 0.1     → 0.875 / 0.825 / 0.775  Bien
- *   2nd guess, confidence unknown             → 0.90   Perfecto floor; with confidence 0.8 → 0.855 Bien
+ *   2nd guess, confidence unknown             → 0.88   Bien (a second guess is never Perfecto); with confidence 0.8 → 0.836
  *   3rd guess                                 → ≤ 0.82 Bien (never Perfecto)
  *   4th+ guess                                → ≤ 0.78 Bien
  * The confidence factor alone never backfires a perfect transcript (minimum 0.75); it only takes
