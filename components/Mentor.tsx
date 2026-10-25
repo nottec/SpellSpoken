@@ -14,7 +14,13 @@ const quickPrompts = (lang: string) => [
   "What should I cast?",
 ];
 
-export default function Mentor({ ctx, nudge }: { ctx: MentorCtx; nudge: number }) {
+/** A coaching line to speak in a bubble; `key` changes with every new tip. */
+export type MentorTip = { text: string; key: string };
+
+/** How long a bubble stays unless dismissed. */
+const BUBBLE_MS = 11000;
+
+export default function Mentor({ ctx, nudge, tip }: { ctx: MentorCtx; nudge: number; tip?: MentorTip | null }) {
   const lang = typeof ctx.lang === "string" ? ctx.lang : "es";
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([{ role: "mentor", text: "I'm Eco. I live in your spellbook. Ask, and I'll point; I won't cast for you." }]);
@@ -22,12 +28,28 @@ export default function Mentor({ ctx, nudge }: { ctx: MentorCtx; nudge: number }
   const [busy, setBusy] = useState(false);
   const [alert, setAlert] = useState(false);
   const [resting, setResting] = useState(false);   // Gemini quota / cooldown: Eco answers from memory
+  const [bubble, setBubble] = useState<MentorTip | null>(null);
+  const [dart, setDart] = useState(0);             // bumps to replay the swoop when a tip arrives
   const listRef = useRef<HTMLDivElement>(null);
 
   // a backfire makes the orb flare until opened
   useEffect(() => { if (nudge > 0) setAlert(true); }, [nudge]);
   useEffect(() => { if (open) setAlert(false); }, [open]);
   useEffect(() => { listRef.current?.scrollTo({ top: 1e6, behavior: "smooth" }); }, [msgs, open]);
+
+  // a new tip: Eco darts, speaks it in a bubble, and the bubble fades on its own
+  useEffect(() => {
+    if (!tip?.text) return;
+    setBubble(tip); setDart((d) => d + 1);
+    const t = setTimeout(() => setBubble((b) => (b?.key === tip.key ? null : b)), BUBBLE_MS);
+    return () => clearTimeout(t);
+  }, [tip?.key, tip?.text]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!bubble) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setBubble(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [bubble]);
 
   async function ask(text: string) {
     const t = text.trim(); if (!t || busy) return;
@@ -45,16 +67,25 @@ export default function Mentor({ ctx, nudge }: { ctx: MentorCtx; nudge: number }
 
   return (
     <>
-      {/* orb */}
-      <button
-        type="button"
-        aria-label={open ? "Close Eco" : "Ask Eco for guidance"}
-        onClick={() => setOpen((o) => !o)}
-        className={`orb fixed bottom-6 right-6 z-40 h-16 w-16 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 ${alert ? "orb-alert" : ""} ${busy ? "orb-busy" : ""}`}
-      >
-        <span className="orb-ring" /><span className="orb-ring orb-ring-2" />
-        <span className="orb-core" />
-      </button>
+      {/* the flyer: Eco wanders the lower right of the screen; the bubble rides with it */}
+      <div className={`eco-flyer ${open ? "eco-still" : ""}`} aria-live="polite">
+        {bubble && !open && (
+          <div className="eco-bubble animate-reveal" role="status">
+            <p className="pr-5 text-sm leading-snug text-vellum">{lang === "zh" ? withPinyin(bubble.text, "zh") : bubble.text}</p>
+            <button type="button" onClick={() => setBubble(null)} aria-label="Dismiss Eco's tip" title="Dismiss (Esc)" className="absolute right-1.5 top-1 rounded px-1 text-xs text-vellum2 hover:text-vellum focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70">✕</button>
+          </div>
+        )}
+        <button
+          key={dart}
+          type="button"
+          aria-label={open ? "Close Eco" : "Ask Eco for guidance"}
+          onClick={() => { setBubble(null); setOpen((o) => !o); }}
+          className={`orb relative block h-16 w-16 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 ${alert ? "orb-alert" : ""} ${busy ? "orb-busy" : ""} ${dart ? "eco-dart" : ""}`}
+        >
+          <span className="orb-ring" /><span className="orb-ring orb-ring-2" />
+          <span className="orb-core" />
+        </button>
+      </div>
 
       {/* panel */}
       {open && (

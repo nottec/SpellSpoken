@@ -270,7 +270,7 @@ export default function Game() {
   return (
     <>
       {screen}
-      <Mentor ctx={mentorCtx} nudge={backfires} />
+      <Mentor ctx={mentorCtx} nudge={backfires} tip={lastCast?.tip ? { text: lastCast.tip, key: `${lastCast.word.id}|${lastCast.heard}|${lastCast.tip}` } : null} />
       {handbook && <Handbook lang={lang} onClose={() => setHandbook(false)} />}
       {growNote && (
         <div role="status" className="fixed bottom-6 left-6 z-30 rounded-full bg-dusk/90 px-3 py-1.5 text-xs text-moss ring-1 ring-white/10 animate-reveal">

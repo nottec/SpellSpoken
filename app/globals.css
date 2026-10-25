@@ -245,3 +245,32 @@ main { position: relative; z-index: 1; }
 @media (max-height: 880px) { .battle-fit { zoom: .92; } }
 @media (max-height: 790px) { .battle-fit { zoom: .84; } }
 @media (max-height: 700px) { .battle-fit { zoom: .76; } }
+
+/* Eco flies: the flyer wanders the lower right (never over the hand's centre), darts when a tip
+   lands, and carries the speech bubble. Still while the chat panel is open or motion is reduced. */
+.eco-flyer { position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 40; pointer-events: none; --w: 1; animation: ecoWander 34s ease-in-out infinite; }
+.eco-flyer > * { pointer-events: auto; }
+.eco-still { animation-play-state: paused; }
+@keyframes ecoWander {
+  0%, 100% { transform: translate(0, 0); }
+  18%  { transform: translate(calc(-28px * var(--w)), calc(-150px * var(--w))); }
+  38%  { transform: translate(calc(-120px * var(--w)), calc(-70px * var(--w))); }
+  58%  { transform: translate(calc(-50px * var(--w)), calc(-240px * var(--w))); }
+  80%  { transform: translate(calc(-160px * var(--w)), calc(-170px * var(--w))); }
+}
+.eco-dart { animation: ecoDart .9s cubic-bezier(.3, 1.4, .5, 1) 1; }
+@keyframes ecoDart {
+  0%   { transform: translate(0, 0) scale(1); }
+  30%  { transform: translate(-22px, -30px) scale(1.2) rotate(-8deg); }
+  60%  { transform: translate(8px, 8px) scale(.95) rotate(6deg); }
+  100% { transform: none; }
+}
+.eco-bubble {
+  position: absolute; right: 4.6rem; bottom: .4rem; width: max-content; max-width: min(20rem, 70vw);
+  border-radius: 1rem 1rem .25rem 1rem; padding: .55rem .8rem;
+  background: rgba(36, 27, 54, .96); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), 0 0 0 1px rgba(240, 163, 94, .28), 0 0 24px rgba(240, 163, 94, .18);
+  backdrop-filter: blur(6px);
+}
+.eco-bubble::after { content: ""; position: absolute; right: -6px; bottom: 10px; width: 12px; height: 12px; background: rgba(36, 27, 54, .96); transform: rotate(45deg); box-shadow: 1px -1px 0 rgba(240, 163, 94, .28); }
+@media (max-width: 640px) { .eco-flyer { --w: .35; } .eco-bubble { max-width: 64vw; } }
+@media (prefers-reduced-motion: reduce) { .eco-flyer, .eco-dart { animation: none; } }

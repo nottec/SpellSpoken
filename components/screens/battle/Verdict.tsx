@@ -59,11 +59,12 @@ export default function Verdict({ verdict, lang }: { verdict: VerdictState; lang
               For <span lang={L.speech} className="text-vellum">“{withPinyin(c.phrase.text, lang)}”</span> {c.typed ? "you typed" : "it heard"} <span lang={L.speech} className="text-vellum">“{c.heard ? withPinyin(c.heard, lang) : "nothing"}”</span>.
               {c.result.grudge && <span className="text-blood"> This word will return.</span>}
             </p>
-            <p className="mt-1 text-sm text-shadow">
-              {c.pending ? <span className="text-vellum2/80">Coach is listening…</span> : c.tip ? withPinyin(c.tip, lang) : null}
-              {typeof c.rating === "number" && <span className="ml-1 text-xs text-vellum2/70" title="Gemini's rating of the accent in the clip, folded into the score">· accent {c.rating}/100</span>}
-              {tag && <span className="ml-1 text-xs text-vellum2/70">{tag}</span>}
-              {why && <span className="ml-1 text-xs text-vellum2/70">· {why}</span>}
+            {/* the tip itself is spoken by Eco in a bubble (Mentor); only the judge's numbers stay here */}
+            <p className="mt-1 text-xs text-vellum2/70">
+              {c.pending ? <span>Eco is listening…</span> : c.tip ? <span>Eco has a tip</span> : null}
+              {typeof c.rating === "number" && <span className="ml-1" title="Gemini's rating of the accent in the clip, folded into the score">· accent {c.rating}/100</span>}
+              {tag && <span className="ml-1">{tag}</span>}
+              {why && <span className="ml-1">· {why}</span>}
             </p>
           </div>
         </div>
