@@ -5,7 +5,7 @@
  * Leave. A refused purchase comes back as the same run reference; we show "Not enough ink."
  */
 import { useEffect, useRef, useState } from "react";
-import { SpellCard } from "@/components/fx";
+import { SpellCard, Ruby } from "@/components/fx";
 import { buyCard, buyRelic, buyRemove, buyUpgrade, leaveShop, type Run } from "@/lib/engine";
 import { LANGS, nodeLabel, type LangId } from "@/lib/lang";
 import { spellName } from "@/data/spells";
@@ -61,7 +61,7 @@ export default function MerchantScreen({ run, lang, onRun }: MerchantScreenProps
 
       <section className="mt-10 text-center">
         <p className="text-[10px] uppercase tracking-[.2em] text-light">merchant</p>
-        <h2 className={`mt-2 font-display text-4xl font-light text-vellum ${L.italic ? "italic" : ""}`}>{nodeLabel("merchant", lang)}</h2>
+        <h2 className="mt-2 font-display text-4xl font-light text-vellum"><Ruby text={nodeLabel("merchant", lang)} lang={lang} italic={L.italic} /></h2>
         <p className="mt-2 text-sm text-vellum2">She unrolls her wares and names her prices. Ink only.</p>
         <p className={`mt-2 h-5 text-sm text-blood transition-opacity duration-300 ${refused ? "opacity-100" : "opacity-0"}`} role="status" aria-live="polite">
           {refused ? "Not enough ink." : ""}
@@ -78,7 +78,7 @@ export default function MerchantScreen({ run, lang, onRun }: MerchantScreenProps
               <SpellCard
                 key={`${s.id}-${i}`}
                 name={spellName(s, lang)} desc={s.desc} element={s.element} kind={s.kind} tier={s.tier} cost={s.cost}
-                power={s.power || undefined} italic={L.italic}
+                power={s.power || undefined} italic={L.italic} lang={lang}
                 disabled={it.sold || poor} hint={it.sold ? "sold" : `${it.price} ink`}
                 onClick={() => attempt(buyCard(run, i))}
               />
@@ -99,8 +99,8 @@ export default function MerchantScreen({ run, lang, onRun }: MerchantScreenProps
                 className="panel flex items-start justify-between gap-4 p-4 text-left transition hover:bg-dusk2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-dusk/80"
               >
                 <span className="min-w-0">
-                  <span className={`block font-display text-xl text-vellum ${L.italic ? "italic" : ""}`}>
-                    <span aria-hidden>{x.emoji}</span> {relicName(x, lang)}
+                  <span className="block font-display text-xl text-vellum">
+                    <span aria-hidden>{x.emoji}</span> <Ruby text={relicName(x, lang)} lang={lang} italic={L.italic} />
                   </span>
                   <span className="block text-xs text-vellum2">{x.gloss}</span>
                   <span className="mt-1 block text-sm text-vellum">{x.desc}</span>

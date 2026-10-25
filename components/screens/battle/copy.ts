@@ -4,7 +4,7 @@
  * docs/SPEECH_GEMINI.md §2. UI language is English; in-world names arrive localized.
  */
 import { STATUS_LABEL, STACK_STATUSES, isDamageKind, type Element, type Spell, type StatusId } from "@/data/spells";
-import { INTENT_TEXT } from "@/data/enemies";
+import { INTENT_TEXT, type Intent } from "@/data/enemies";
 import { cardName, castBlocker, previewCast, hasStatus, nextIntent, intentDamage, type Run, type Card, type CastResult, type TurnResult, type Enemy } from "@/lib/engine";
 import type { LangConfig, LangId } from "@/lib/lang";
 import type { Vocab } from "@/data/vocab";
@@ -107,8 +107,20 @@ export function cardHint(run: Run, card: Card, spell: Spell): string | undefined
   return undefined;
 }
 
-/** "strikes for 17" with the real number (Weak accounted for); `danger` when a charged hit is coming. */
-export function intentLine(e: Enemy): { text: string; danger: boolean; tone: "blood" | "shadow" | "ember"; note: string | null } {
+/** What the enemy's next action would do: damage before your defenses, armor gained, or life mended (0 otherwise). */
+export function intentAmount(e: Enemy): number {
+  const intent = nextIntent(e);
+  if (intent === "attack" || intent === "double") return intentDamage(e);
+  if (intent === "block") return Math.round(e.attack * 1.5);
+  if (intent === "heal") return Math.max(0, Math.min(Math.round(e.hp * 0.12), e.hp - e.hpNow));
+  return 0;
+}
+
+/**
+ * "strikes for 17" with the real number (Weak accounted for); `danger` when a charged hit is coming.
+ * `intent` and `amount` feed the IntentBadge (`amount` = intentAmount).
+ */
+export function intentLine(e: Enemy): { intent: Intent; amount: number; text: string; danger: boolean; tone: "blood" | "shadow" | "ember"; note: string | null } {
   const intent = nextIntent(e);
   const dmg = intentDamage(e);
   const text =
@@ -121,7 +133,7 @@ export function intentLine(e: Enemy): { text: string; danger: boolean; tone: "bl
   const note = hasStatus(e.statuses, "stagger") ? "it will stagger instead"
     : intent === "charge" && hasStatus(e.statuses, "chill") ? "the chill will hold it"
     : attackish && hasStatus(e.statuses, "weak") ? "weakened" : null;
-  return { text, danger, tone: danger ? "blood" : intent === "curse" || intent === "silence" ? "shadow" : "ember", note };
+  return { intent, amount: intentAmount(e), text, danger, tone: danger ? "blood" : intent === "curse" || intent === "silence" ? "shadow" : "ember", note };
 }
 
 /** Coach status line from the route's `why` (docs/SPEECH_GEMINI.md §2). */

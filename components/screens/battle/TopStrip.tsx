@@ -3,7 +3,7 @@
 import { FLOORS, relicsOf, type Run } from "@/lib/engine";
 import { relicName } from "@/data/relics";
 import type { LangId } from "@/lib/lang";
-import { HpBar, InkCounter, StatusBadge } from "@/components/fx";
+import { HpBar, InkCounter, StatusBadge, Ruby, SfxToggle } from "@/components/fx";
 
 /** Floor, turn, ink, your life (+ shield and statuses) and the relic row. */
 export default function TopStrip({ run, lang }: { run: Run; lang: LangId }) {
@@ -15,6 +15,7 @@ export default function TopStrip({ run, lang }: { run: Run; lang: LangId }) {
           <span className="font-display text-base text-vellum">Floor {run.floor + 1} of {FLOORS}</span>
           <span>turn {run.turn}</span>
           <InkCounter value={run.ink} />
+          <SfxToggle />
         </div>
         <div className="flex min-w-[14rem] flex-1 flex-wrap items-center justify-end gap-x-2 gap-y-1 sm:max-w-sm">
           <HpBar value={run.hp} max={run.maxHp} label="Your life" className="min-w-[10rem] flex-1" />
@@ -26,7 +27,7 @@ export default function TopStrip({ run, lang }: { run: Run; lang: LangId }) {
       </div>
       {relics.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-vellum2" aria-label="relics">
-          {relics.map((x) => <span key={x.id} title={x.desc}>{x.emoji} {relicName(x, lang)}</span>)}
+          {relics.map((x) => <span key={x.id} title={x.desc}>{x.emoji} <Ruby text={relicName(x, lang)} lang={lang} /></span>)}
         </div>
       )}
     </header>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { withPinyin } from "@/components/fx";
 
 /** Everything Game.tsx knows about the run, shaped for /api/mentor (every field optional there). */
 export type MentorCtx = Record<string, unknown> & { lang?: string };
@@ -67,7 +68,7 @@ export default function Mentor({ ctx, nudge }: { ctx: MentorCtx; nudge: number }
           </div>
           <div ref={listRef} className="max-h-72 space-y-2 overflow-y-auto px-4 pb-2">
             {msgs.map((m, i) => (
-              <p key={i} className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-snug ${m.role === "user" ? "ml-auto bg-vellum text-ink" : "bg-white/5 text-vellum"}`}>{m.text}</p>
+              <p key={i} className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-snug ${m.role === "user" ? "ml-auto bg-vellum text-ink" : "bg-white/5 text-vellum"}`}>{lang === "zh" ? withPinyin(m.text, "zh") : m.text}</p>
             ))}
             {busy && <p className="max-w-[90%] rounded-2xl bg-white/5 px-3 py-2 text-sm text-vellum2">…</p>}
           </div>

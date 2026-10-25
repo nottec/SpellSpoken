@@ -2,7 +2,7 @@
 
 /** After a won battle: one spell (three offered), then for elites and bosses one relic. The engine advances by itself. */
 import { useEffect } from "react";
-import { SpellCard } from "@/components/fx";
+import { SpellCard, Ruby } from "@/components/fx";
 import { advance, pendingReward, takeCard, takeRelic, type Run } from "@/lib/engine";
 import { LANGS, type LangId } from "@/lib/lang";
 import { spellName } from "@/data/spells";
@@ -45,7 +45,7 @@ export default function RewardScreen({ run, lang, onRun }: RewardScreenProps) {
               <SpellCard
                 key={`${s.id}-${i}`}
                 name={spellName(s, lang)} desc={s.desc} element={s.element} kind={s.kind} tier={s.tier} cost={s.cost}
-                power={s.power || undefined} italic={L.italic} hint={s.rarity !== "common" ? s.rarity : undefined}
+                power={s.power || undefined} italic={L.italic} lang={lang} hint={s.rarity !== "common" ? s.rarity : undefined}
                 hotkey={String(i + 1)} onClick={() => onRun(takeCard(run, i))}
               />
             ))}
@@ -69,8 +69,8 @@ export default function RewardScreen({ run, lang, onRun }: RewardScreenProps) {
                   <span>Relic</span>
                   <kbd className="rounded border border-white/15 px-1 font-sans text-[10px] leading-4">{i + 1}</kbd>
                 </span>
-                <span className={`mt-1 font-display text-2xl text-vellum ${L.italic ? "italic" : ""}`}>
-                  <span aria-hidden>{x.emoji}</span> {relicName(x, lang)}
+                <span className="mt-1 font-display text-2xl text-vellum">
+                  <span aria-hidden>{x.emoji}</span> <Ruby text={relicName(x, lang)} lang={lang} italic={L.italic} />
                 </span>
                 <span className="text-xs text-vellum2">{x.gloss}</span>
                 <span className="mt-2 text-sm text-vellum">{x.desc}</span>

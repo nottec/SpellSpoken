@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
   EnemySprite, ENEMY_SPRITE_IDS, Sigil, SpellCard, BreathPips, HpBar, StatusBadge, STATUS_META, useFloatText, Burst,
-  VuMeter, ListeningRing, DoorCard, PathStrip, InkCounter, LogPanel,
-  type Element, type EnemyKind, type NodeKind, type StatusId,
+  VuMeter, ListeningRing, DoorCard, PathStrip, InkCounter, LogPanel, Ruby, withPinyin, IntentBadge, useStageFx, SfxToggle,
+  type Element, type EnemyKind, type NodeKind, type StatusId, type IntentId, type ReactionId, type LangId,
 } from "@/components/fx";
+import { playSfx, type SfxKind } from "@/lib/sfx";
 
 const KIND_OF: Record<string, EnemyKind> = {
   limo: "minion", murci: "minion", rata: "minion", arana: "minion", cuervo: "minion", duende: "minion",
@@ -19,6 +20,12 @@ const ELEMENTS: Element[] = ["fire", "water", "wind", "shadow", "light"];
 const DOORS: NodeKind[] = ["fight", "elite", "rest", "event", "merchant", "boss", "final"];
 const FLOORS: NodeKind[][] = [["fight"], ["fight", "event", "elite"], ["rest", "fight"], ["boss"], ["merchant", "fight", "event"], ["elite", "rest"], ["fight", "merchant", "event"], ["final"]];
 const FULL_PATH = [0, 2, 1, 0, 1, 0, 2, 0];
+const INTENTS: IntentId[] = ["attack", "double", "charge", "curse", "silence", "heal", "block"];
+const INTENT_ZH: Record<IntentId, string> = { attack: "攻击", double: "连击", charge: "蓄力", curse: "诅咒", silence: "沉默", heal: "治疗", block: "格挡" };
+const INTENT_ES: Record<IntentId, string> = { attack: "Golpe", double: "Doble golpe", charge: "Carga", curse: "Maldición", silence: "Silencio", heal: "Curación", block: "Bloqueo" };
+const REACTIONS: ReactionId[] = ["wildfire", "steam", "storm", "eclipse", "dusk"];
+const SFX: SfxKind[] = ["hit", "crit", "backfire", "shield", "heal", "enemyHit", "select", "listen", "win", "lose"];
+void DOORS;
 
 function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
@@ -52,8 +59,8 @@ function SpriteCell({ id, allHit, allCharged, allDead }: { id: string; allHit: n
   useEffect(() => { if (allHit) hit(); }, [allHit]);
   const kind = KIND_OF[id] ?? "minion";
   return (
-    <div className="panel flex flex-col items-center p-3">
-      <div className="flex h-[210px] items-center justify-center">
+    <div className="panel flex flex-col items-center overflow-hidden p-3">
+      <div className="flex h-[210px] max-w-full items-center justify-center">
         <EnemySprite id={id} kind={kind} hurt={hurt} charged={charged || allCharged} dead={dead || allDead} />
       </div>
       <p className="mt-1 font-display text-base italic">{NAME_OF[id] ?? "(unknown id)"}</p>
@@ -104,6 +111,70 @@ function Stage() {
   );
 }
 
+/* ---------------- stage fx (useStageFx) ---------------- */
+
+function StageFxDemo() {
+  const enemy = useStageFx();
+  const self = useStageFx();
+  const [el, setEl] = useState<Element>("fire");
+  const [crit, setCrit] = useState(false);
+  const [reaction, setReaction] = useState<ReactionId | "">("");
+  const [weak, setWeak] = useState(false);
+  const [hurt, setHurt] = useState(false);
+  const [sprite, setSprite] = useState("lobo");
+  const hit = (amount: number) => {
+    setHurt(true); setTimeout(() => setHurt(false), 380);
+    enemy.strike(el, { amount, crit, reaction: reaction || null, weak });
+  };
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
+        <section ref={enemy.host} className="panel relative flex flex-col items-center gap-3 px-6 py-5" aria-label="enemy stage">
+          <div className="fx-stage-sprite relative">
+            <EnemySprite id={sprite} kind={KIND_OF[sprite] ?? "minion"} hurt={hurt} />
+            {enemy.layer}
+          </div>
+          <select value={sprite} onChange={(e) => setSprite(e.target.value)} className="rounded-full bg-black/30 px-3 py-1 text-xs text-vellum ring-1 ring-white/10">
+            {ENEMY_SPRITE_IDS.map((id) => <option key={id} value={id}>{NAME_OF[id]}</option>)}
+          </select>
+        </section>
+        <section ref={self.host} className="panel relative flex min-h-[200px] flex-col items-center justify-center px-6 py-5 text-center" aria-label="incantation stage">
+          <p className="text-xs text-vellum2">the incantation (self host)</p>
+          <p className="mt-2 font-display text-4xl font-light text-vellum">Buenos días</p>
+          <p className="mt-2 text-sm text-vellum2">“good morning”</p>
+          {self.layer}
+        </section>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-vellum2">strike:</span>
+        {ELEMENTS.map((e) => (
+          <button key={e} onClick={() => setEl(e)} className={`rounded-full p-1 ${el === e ? "bg-white/15" : "hover:bg-white/5"}`} title={e}><Sigil element={e} size={18} /></button>
+        ))}
+        <label className="ml-2 flex items-center gap-1 text-xs text-vellum2"><input type="checkbox" className="accent-ember" checked={crit} onChange={(e) => setCrit(e.target.checked)} /> crit</label>
+        <label className="flex items-center gap-1 text-xs text-vellum2"><input type="checkbox" className="accent-ember" checked={weak} onChange={(e) => setWeak(e.target.checked)} /> weak (×2)</label>
+        <select value={reaction} onChange={(e) => setReaction(e.target.value as ReactionId | "")} className="rounded-full bg-black/30 px-3 py-1 text-xs text-vellum ring-1 ring-white/10">
+          <option value="">no reaction</option>
+          {REACTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <button onClick={() => hit(12)} className="btn-ember px-3 py-1.5 text-xs">hit 12</button>
+        <button onClick={() => hit(24)} className="btn-ember px-3 py-1.5 text-xs">hit 24</button>
+        <button onClick={() => hit(47)} className="btn-ember px-3 py-1.5 text-xs">hit 47</button>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button onClick={() => self.selfHit(6, { backfire: true })} className="btn-quiet px-3 py-1.5 text-xs">backfire −6 (self)</button>
+        <button onClick={() => self.selfHit(18)} className="btn-quiet px-3 py-1.5 text-xs">enemy hits you −18 (self)</button>
+        <button onClick={() => self.shield(10)} className="btn-quiet px-3 py-1.5 text-xs">shield ⛨ 10 (self)</button>
+        <button onClick={() => self.heal(9)} className="btn-quiet px-3 py-1.5 text-xs">heal +9 (self)</button>
+        <button onClick={() => enemy.heal(14)} className="btn-quiet px-3 py-1.5 text-xs">enemy mends +14</button>
+        <button onClick={() => enemy.float("12", "text-fire")} className="btn-quiet px-3 py-1.5 text-xs">float (compat)</button>
+        <button onClick={() => enemy.callout("STEAM!", "water")} className="btn-quiet px-3 py-1.5 text-xs">callout</button>
+        <button onClick={() => enemy.shake("soft")} className="btn-quiet px-3 py-1.5 text-xs">shake soft</button>
+        <button onClick={() => enemy.shake("hard")} className="btn-quiet px-3 py-1.5 text-xs">shake hard</button>
+      </div>
+    </>
+  );
+}
+
 /* ---------------- mic meters ---------------- */
 
 function Mic() {
@@ -137,6 +208,39 @@ function Mic() {
   );
 }
 
+/* ---------------- intent badges ---------------- */
+
+function Intents() {
+  const [lang, setLang] = useState<LangId>("es");
+  const [shield, setShield] = useState(0);
+  const [armor, setArmor] = useState(0);
+  const [charged, setCharged] = useState(false);
+  const [step, setStep] = useState(0);
+  const amount = (i: IntentId) => (i === "attack" ? 18 : i === "double" ? 20 : i === "block" ? 27 : i === "heal" ? 14 : 0);
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <Slider label="your shield" value={shield} min={0} max={40} onChange={setShield} />
+        <Slider label="your armor" value={armor} min={0} max={20} onChange={setArmor} />
+        <label className="flex items-center gap-2 text-xs text-vellum2"><input type="checkbox" className="accent-ember" checked={charged} onChange={(e) => setCharged(e.target.checked)} /> charged (×2)</label>
+        <button onClick={() => setLang((l) => (l === "es" ? "zh" : "es"))} className="btn-quiet px-3 py-1 text-xs">names: {lang === "es" ? "Español" : "中文 + pinyin"}</button>
+        <button onClick={() => setStep((s) => s + 1)} className="btn-quiet px-3 py-1 text-xs">new intent (pulse)</button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {INTENTS.map((i) => (
+          <IntentBadge
+            key={i} intent={i} amount={amount(i) * (charged && (i === "attack" || i === "double") ? 2 : 1)} charged={charged && (i === "attack" || i === "double" || i === "charge")}
+            shield={shield} armor={armor} title={lang === "zh" ? INTENT_ZH[i] : INTENT_ES[i]} lang={lang} pulseKey={step}
+            note={i === "attack" ? "weakened" : i === "charge" ? "the chill will hold it" : null}
+          />
+        ))}
+        <IntentBadge intent="attack" amount={18} title="Golpe" note="it will stagger instead" pulseKey={step} />
+        <p className="self-center text-xs text-vellum2">← without `shield`/`armor` the badge keeps the old copy: no "you'd lose" line, danger only when charged.</p>
+      </div>
+    </>
+  );
+}
+
 /* ---------------- page ---------------- */
 
 export default function FxDevPage() {
@@ -152,13 +256,55 @@ export default function FxDevPage() {
   const [inkDelta, setInkDelta] = useState<number | undefined>(undefined);
   const [floor, setFloor] = useState(2);
   const [chosen, setChosen] = useState(false);
-  const [lines, setLines] = useState<string[]>(["You enter the crypt.", "Araña de cripta appears.", "Chispa lands for 14. Burn 2.", "It bites you for 6."]);
+  const [lines, setLines] = useState<string[]>(["You enter the crypt.", "Araña de cripta blocks the way.", "Chispa+ lands for 14, critical — steam. Burn 3.", "Araña de cripta strikes for 17; you lose 6.", "Took Lengua de plata."]);
+  const [sfxEl, setSfxEl] = useState<Element>("fire");
   const path = FULL_PATH.slice(0, floor + (chosen ? 1 : 0));
 
   return (
     <div className="pb-24 animate-reveal">
       <h1 className="font-display text-4xl font-light italic">fx — component library</h1>
       <p className="mt-2 max-w-xl text-sm text-vellum2">Every primitive from <code className="text-vellum">components/fx</code> in every state. Dark grimoire palette, Fraunces for display, Manrope for UI, Noto Serif SC for 中文 (never italic).</p>
+
+      <Section title="Ruby · withPinyin" note="pinyin over every Chinese string; Spanish passes through (italic when asked)">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="panel p-4 text-sm">
+            <p className="text-xs text-vellum2">Ruby — in-world names</p>
+            <p className="mt-2 font-display text-2xl"><Ruby text="沼泽泥怪" lang="zh" /> <span className="text-sm text-vellum2">swamp slime</span></p>
+            <p className="font-display text-2xl"><Ruby text="回声女巫" lang="zh" /> <span className="text-sm text-vellum2">echo witch</span></p>
+            <p className="font-display text-2xl"><Ruby text="Bruja del eco" lang="es" italic /> <span className="text-sm text-vellum2">es, italic</span></p>
+            <p className="mt-2 text-base"><Ruby text="下雨了" lang="zh" rt="xià yǔ le" /> <span className="text-xs text-vellum2">· rt override (curated reading)</span></p>
+            <p className="mt-2"><Ruby text="中文" lang="zh" className="font-display text-base" /> <Ruby text="Español" lang="es" className="font-display text-base" /> <span className="text-xs text-vellum2">· the Title's language buttons</span></p>
+          </div>
+          <div className="panel p-4 text-sm">
+            <p className="text-xs text-vellum2">withPinyin — mixed sentences</p>
+            <p className="mt-2 text-vellum">{withPinyin("火花+ lands for 14, critical — steam. Burn 3.", "zh")}</p>
+            <p className="mt-1 text-vellum">{withPinyin("For “今天很冷” it heard “今天很累”.", "zh")}</p>
+            <p className="mt-1 text-vellum">{withPinyin("真恶心！(How gross!)", "zh")}</p>
+            <p className="mt-1 text-shadow">{withPinyin("Your 不 should fall to the second tone before 好: bú hǎo. Try 不好 again.", "zh")}</p>
+            <p className="mt-1 text-vellum">{withPinyin("No Chinese here: unchanged string.", "zh")}</p>
+            <p className="mt-2 font-display text-lg"><Ruby text="完美." lang="zh" className="text-light" /> <Ruby text="马马虎虎." lang="zh" className="text-fire" /> <Ruby text="失败！" lang="zh" className="text-blood" /></p>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="IntentBadge" note="the enemy's next move, large; blood + pulse when it gets through or it is charged; stacks under the sprite on phones">
+        <Intents />
+      </Section>
+
+      <Section title="useStageFx" note="drop-in for useFloatText with element strikes, knockback, crit numbers, reaction banners, vignette, shield ring, motes, shake and sound">
+        <StageFxDemo />
+      </Section>
+
+      <Section title="Sound (lib/sfx)" note="synthesized cues; the toggle persists in localStorage incantation.sfx">
+        <div className="flex flex-wrap items-center gap-2">
+          <SfxToggle className="!h-9 !w-9 bg-white/5 text-lg" />
+          <span className="text-xs text-vellum2">element:</span>
+          {ELEMENTS.map((e) => (
+            <button key={e} onClick={() => setSfxEl(e)} className={`rounded-full p-1 ${sfxEl === e ? "bg-white/15" : "hover:bg-white/5"}`} title={e}><Sigil element={e} size={18} /></button>
+          ))}
+          {SFX.map((k) => <button key={k} onClick={() => playSfx(k, { element: sfxEl })} className="btn-quiet px-3 py-1.5 text-xs">{k}</button>)}
+        </div>
+      </Section>
 
       <Section title="EnemySprite" note="13 ids from DESIGN.md §5 plus the fallback wisp. Each has its own idle.">
         <div className="mb-3 flex flex-wrap gap-2">
@@ -178,22 +324,23 @@ export default function FxDevPage() {
         </div>
       </Section>
 
-      <Section title="SpellCard" note="150 px wide; click to select. Hints read in light (good) or blood (bad).">
+      <Section title="SpellCard" note="150 px wide; click to select. Hints read in light (good) or blood (bad). lang=zh adds pinyin.">
         <div className="flex flex-wrap gap-3">
           <SpellCard name="Chispa" desc="Deal 12. Burn 2 for 2 turns." element="fire" kind="attack" tier={1} cost={1} power={12} hotkey="1" selected={selectedCard === "chispa"} onClick={() => setSelectedCard("chispa")} />
           <SpellCard name="Gota" desc="Deal 12. Chill 1." element="water" kind="attack" tier={1} cost={1} power={12} hotkey="2" hint="steam ↑" selected={selectedCard === "gota"} onClick={() => setSelectedCard("gota")} />
           <SpellCard name="Llamarada+" desc="Deal 31. Burn 4 for 2 turns." element="fire" kind="attack" tier={2} cost={2} power={31} up hotkey="3" hint="×2 here" selected={selectedCard === "llamarada"} onClick={() => setSelectedCard("llamarada")} />
           <SpellCard name="Infierno" desc="Deal 42. Burn 5 for 3 turns." element="fire" kind="attack" tier={3} cost={3} power={42} hotkey="4" disabled hint="silenced" />
-          <SpellCard name="火花" desc="Deal 12. Burn 2 for 2 turns." element="fire" kind="attack" tier={1} cost={1} power={12} italic={false} hint="resisted" selected={selectedCard === "zh"} onClick={() => setSelectedCard("zh")} />
-          <SpellCard name="Escudo" desc="Gain 10 shield." element="light" kind="shield" tier={1} cost={1} power={10} hotkey="5" selected={selectedCard === "escudo"} onClick={() => setSelectedCard("escudo")} />
-          <SpellCard name="Foco" desc="Gain focus: your next cast scores +0.10." element="light" kind="empower" tier={1} cost={0} hotkey="6" selected={selectedCard === "foco"} onClick={() => setSelectedCard("foco")} />
+          <SpellCard name="火花" desc="Deal 12. Burn 2 for 2 turns." element="fire" kind="attack" tier={1} cost={1} power={12} italic={false} lang="zh" hint="resisted" selected={selectedCard === "zh"} onClick={() => setSelectedCard("zh")} />
+          <SpellCard name="地狱火+" desc="Deal 55. Burn 6 for 3 turns." element="fire" kind="attack" tier={3} cost={3} power={55} up lang="zh" hotkey="5" selected={selectedCard === "zh2"} onClick={() => setSelectedCard("zh2")} />
+          <SpellCard name="Escudo" desc="Gain 10 shield." element="light" kind="shield" tier={1} cost={1} power={10} hotkey="6" selected={selectedCard === "escudo"} onClick={() => setSelectedCard("escudo")} />
+          <SpellCard name="Foco" desc="Gain focus: your next cast scores +0.10." element="light" kind="empower" tier={1} cost={0} hotkey="7" selected={selectedCard === "foco"} onClick={() => setSelectedCard("foco")} />
           <SpellCard name="Niebla" desc="Weak 2 and chill 2 on the enemy." element="water" kind="hex" tier={1} cost={1} hint="3 breath" selected={selectedCard === "niebla"} onClick={() => setSelectedCard("niebla")} />
           <SpellCard name="Sangría" desc="Drain 20; heal half of it." element="shadow" kind="drain" tier={2} cost={2} power={20} disabled hint="too weak" />
-          <SpellCard name="Plegaria" desc="Heal 30. Regen 5 for 3 turns." element="water" kind="heal" tier={3} cost={3} power={30} hotkey="7" disabled hint="not enough breath" />
+          <SpellCard name="Plegaria" desc="Heal 30. Regen 5 for 3 turns." element="water" kind="heal" tier={3} cost={3} power={30} hotkey="8" disabled hint="not enough breath" />
         </div>
       </Section>
 
-      <Section title="BreathPips · HpBar · InkCounter">
+      <Section title="BreathPips · HpBar · InkCounter · LogPanel">
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="panel p-4">
             <BreathPips current={breath} max={maxBreath} />
@@ -221,8 +368,11 @@ export default function FxDevPage() {
             </div>
           </div>
           <div className="panel p-4">
+            <p className="mb-2 text-xs text-vellum2">LogPanel, lang omitted (engine lines as written)</p>
             <LogPanel lines={lines} />
-            <button onClick={() => setLines((l) => [...l, `Turn ${l.length}: Gota lands for ${10 + l.length}. Steam!`])} className="btn-quiet mt-3 px-3 py-1 text-xs">add a line</button>
+            <p className="mb-2 mt-4 text-xs text-vellum2">LogPanel lang=&quot;zh&quot; — the same lines through localizeLine + withPinyin</p>
+            <LogPanel lines={lines} lang="zh" />
+            <button onClick={() => setLines((l) => [...l, `Gota lands for ${10 + l.length} — steam. Chill 1.`])} className="btn-quiet mt-3 px-3 py-1 text-xs">add a line</button>
           </div>
         </div>
       </Section>
@@ -242,7 +392,7 @@ export default function FxDevPage() {
         </ul>
       </Section>
 
-      <Section title="useFloatText · Burst" note="numbers rise from the host's upper third; the burst fires on each trigger change">
+      <Section title="useFloatText · Burst" note="the older primitives, still exported; numbers rise from the host's upper third, the burst fires on each trigger change">
         <Stage />
       </Section>
 
@@ -250,15 +400,15 @@ export default function FxDevPage() {
         <Mic />
       </Section>
 
-      <Section title="DoorCard" note="all node kinds; the last one disabled">
+      <Section title="DoorCard" note="all node kinds; lang=zh adds pinyin; the last one disabled">
         <div className="flex flex-wrap gap-3">
           <DoorCard kind="fight" title="Rata gigante" subtitle="giant rat" onClick={() => {}} />
           <DoorCard kind="elite" title="Gólem de piedra" subtitle="elite · stone golem" onClick={() => {}} />
           <DoorCard kind="rest" title="Descanso" subtitle="heal, study or forget" onClick={() => {}} />
           <DoorCard kind="event" title="Una puerta extraña" subtitle="something waits" onClick={() => {}} />
-          <DoorCard kind="merchant" title="Mercader" subtitle="cards, relics, ink" onClick={() => {}} />
-          <DoorCard kind="boss" title="Dragón de ceniza" subtitle="boss · ash dragon" onClick={() => {}} />
-          <DoorCard kind="final" title="遗忘" subtitle="the Forgetting" italic={false} onClick={() => {}} />
+          <DoorCard kind="merchant" title="商人" subtitle="spend ink" lang="zh" onClick={() => {}} />
+          <DoorCard kind="boss" title="灰烬龙" subtitle="boss · ash dragon" lang="zh" onClick={() => {}} />
+          <DoorCard kind="final" title="遗忘" subtitle="the Forgetting" italic={false} lang="zh" onClick={() => {}} />
           <DoorCard kind="fight" title="Cuervo" subtitle="not reachable" disabled />
         </div>
       </Section>

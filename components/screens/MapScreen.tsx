@@ -74,7 +74,7 @@ export default function MapScreen({ run, lang, onRun }: MapScreenProps) {
           const d = door(node, lang);
           return (
             <div key={i} className="flex flex-col items-center gap-2">
-              <DoorCard kind={node.kind} title={d.title} subtitle={d.subtitle} italic={L.italic} onClick={() => onRun(chooseNode(run, i))} />
+              <DoorCard kind={node.kind} title={d.title} subtitle={d.subtitle} italic={L.italic} lang={lang} onClick={() => onRun(chooseNode(run, i))} />
               <kbd className="rounded border border-white/15 px-1.5 font-sans text-[10px] leading-4 text-vellum2" aria-label={`hotkey ${i + 1}`}>{i + 1}</kbd>
             </div>
           );

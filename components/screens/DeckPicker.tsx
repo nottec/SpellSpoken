@@ -59,7 +59,7 @@ export default function DeckPicker({ run, lang, title, note, filter, filteredHin
             <SpellCard
               key={card.uid}
               name={cardName(card, lang)} desc={cardDesc(card)} element={spell.element} kind={spell.kind}
-              tier={spell.tier} cost={spell.cost} power={effectivePower(card) || undefined} up={card.up} italic={L.italic}
+              tier={spell.tier} cost={spell.cost} power={effectivePower(card) || undefined} up={card.up} italic={L.italic} lang={lang}
               disabled={!ok} hint={!ok ? filteredHint : undefined}
               onClick={ok && onPick ? () => onPick(card.uid) : undefined}
               className={onPick ? "" : "cursor-default"}

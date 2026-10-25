@@ -44,6 +44,7 @@ export default function Hand({ run, lang, selected, onSelect, locked, onEndTurn,
             power={spell.power > 0 ? effectivePower(card) : undefined}
             up={card.up}
             italic={L.italic}
+            lang={lang}
             hotkey={i < 9 ? String(i + 1) : undefined}
             selected={selected === card.uid}
             disabled={!!castBlocker(run, card.uid)}

@@ -1,7 +1,17 @@
-export type LogPanelProps = { lines: string[]; max?: number; className?: string };
+import { localizeLine } from "@/lib/lang";
+import { withPinyin } from "./Ruby";
+import type { LangId } from "./types";
+
+export type LogPanelProps = {
+  lines: string[];
+  max?: number;
+  className?: string;
+  /** With "zh", Spanish in-world names in the engine's lines become Chinese with ruby pinyin (`localizeLine` + `withPinyin`). */
+  lang?: LangId;
+};
 
 /** The last few battle-log lines, newest last and brightest. Quiet type. */
-export default function LogPanel({ lines, max = 5, className = "" }: LogPanelProps) {
+export default function LogPanel({ lines, max = 5, className = "", lang }: LogPanelProps) {
   const shown = lines.slice(-max);
   const offset = lines.length - shown.length;
   return (
@@ -12,7 +22,7 @@ export default function LogPanel({ lines, max = 5, className = "" }: LogPanelPro
         const age = shown.length - 1 - i;
         return (
           <p key={`${offset + i}-${l}`} className={`text-xs leading-relaxed ${newest ? "animate-reveal text-vellum" : "text-vellum2"}`} style={newest ? undefined : { opacity: Math.max(0.3, 0.8 - age * 0.15) }}>
-            {l}
+            {lang ? withPinyin(localizeLine(l, lang), lang) : l}
           </p>
         );
       })}
