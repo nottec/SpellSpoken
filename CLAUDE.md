@@ -1,4 +1,4 @@
-# Incantation — project brief for Claude Code
+# SpellSpoken (formerly Incantation) — project brief for Claude Code
 
 A pronunciation roguelike for Spanish and Mandarin, built for HackTX 2026 (UT Austin, Oct 24–25, 2026).
 Every card is a spell and every spell is a phrase in the target language. Say it well → it lands. Mumble → it backfires.

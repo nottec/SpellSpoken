@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Incantation",
+  title: "SpellSpoken",
   description: "A pronunciation roguelike. Speak the spell. Say it right, or it backfires.",
 };
 

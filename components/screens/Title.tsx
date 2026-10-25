@@ -37,7 +37,7 @@ export default function Title({ lang, onLang, lexicon, words, saved, onContinue,
 
   return (
     <div className="flex min-h-[85vh] flex-col items-center justify-center text-center animate-reveal">
-      <h1 className="font-display text-6xl font-light italic tracking-tight text-vellum animate-flicker md:text-8xl">Incantation</h1>
+      <h1 className="font-display text-6xl font-light italic tracking-tight text-vellum animate-flicker md:text-8xl">SpellSpoken</h1>
       <p className="mt-5 max-w-md text-balance text-vellum2">
         Spells are effects. The words are drawn fresh from a lexicon of {lexicon.length} {L.english} entries, and it grows as you fight.
         Say them well and they hit hard. Mumble and they burn you. Eight floors, one life.

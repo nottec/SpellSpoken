@@ -1,4 +1,4 @@
-# Incantation — expansion design (HackTX 2026, Oct 24→25)
+# SpellSpoken (formerly Incantation) — expansion design (HackTX 2026, Oct 24→25)
 
 This document is the contract between the engine, the speech/Gemini layer, the visual
 components and the screens. Agents implement **exactly** the names and shapes here; if an
