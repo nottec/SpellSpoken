@@ -1,4 +1,7 @@
 /** Everything that differs between target languages lives here. */
+import { ELEMENT_LABEL, type Element } from "@/data/spells";
+import type { NodeKind } from "./map";
+
 export type LangId = "es" | "zh";
 
 export type LangConfig = {
@@ -31,3 +34,27 @@ export const DEFAULT_LANG: LangId = "es";
 const KEY = "incantation.lang";
 export function loadLang(): LangId { try { const v = localStorage.getItem(KEY); return v === "zh" || v === "es" ? v : DEFAULT_LANG; } catch { return DEFAULT_LANG; } }
 export function saveLang(l: LangId) { try { localStorage.setItem(KEY, l); } catch {} }
+
+/* ---------- in-world names (every data record carries `name` (es) and `zh`) ---------- */
+
+/** The localized in-world name of any record with `name` (Spanish) and `zh`. */
+export const localName = (x: { name: string; zh: string }, lang: LangId) => (lang === "zh" ? x.zh : x.name);
+
+export const ELEMENT_LABELS: Record<LangId, Record<Element, string>> = {
+  es: ELEMENT_LABEL,
+  zh: { fire: "火", water: "水", wind: "风", shadow: "影", light: "光" },
+};
+export const elementLabel = (el: Element, lang: LangId) => ELEMENT_LABELS[lang][el];
+
+/** Map node kinds: in-world labels (`name` es / `zh`) plus the English UI word. */
+export const NODE_LABEL: Record<NodeKind, { name: string; zh: string; en: string }> = {
+  fight:    { name: "Combate",    zh: "战斗", en: "Fight" },
+  elite:    { name: "Élite",      zh: "精英", en: "Elite" },
+  rest:     { name: "Descansar",  zh: "休息", en: "Rest" },
+  event:    { name: "Suceso",     zh: "奇遇", en: "Event" },
+  merchant: { name: "Mercader",   zh: "商人", en: "Merchant" },
+  boss:     { name: "Jefe",       zh: "首领", en: "Boss" },
+  final:    { name: "El final",   zh: "终局", en: "Final" },
+};
+export const nodeLabel = (kind: NodeKind, lang: LangId) => localName(NODE_LABEL[kind], lang);
+export const REST_LABEL = NODE_LABEL.rest;
