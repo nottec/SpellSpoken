@@ -141,6 +141,10 @@ function fallback(q: string, ctx: Ctx, L: LangConfig) {
       ? "It heard the right syllables, so the tones drifted. Hum the shape of each tone first, flat, rising, dipping, falling, then put the syllable on it. Which one wobbles?"
       : "It heard most of it. Something in the vowels drifted toward English; Spanish vowels are short and never glide. Which vowel did you stretch?";
   }
+  if (/what does (this|the|that) (card|spell|one) do|effect|what (is|does) this card/.test(s) && ctx.selected?.card) {
+    const c = ctx.selected;
+    return `${c.card}${c.cost !== undefined ? ` costs ${c.cost} breath` : ""}${c.effect ? `: ${c.effect.replace(/\.$/, "")}` : ""}. Whether it lands is up to how you say "${c.phrase}"${c.reading ? ` (${c.reading})` : ""}; the page tells you what it means.`;
+  }
   if (/this (word|card|one|phrase|spell)|looking at|selected|how do i say|how to say/.test(s) && ctx.selected?.phrase) {
     const f = ctx.selected.focus;
     if (f) return zh ? zhMouth(f) : esMouth(f);
