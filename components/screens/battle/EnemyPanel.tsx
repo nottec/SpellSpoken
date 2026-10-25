@@ -29,9 +29,9 @@ export default function EnemyPanel({ enemy: e, lang, hurt, dead, burst = NO_BURS
   const intent = intentLine(e);
   const kindTag = e.kind === "final" ? "final boss" : e.kind === "boss" ? "boss" : e.kind === "elite" ? "elite" : null;
   return (
-    <section ref={host} className="panel relative mt-5 flex flex-col items-center gap-4 px-5 py-5 sm:flex-row sm:gap-6" aria-label="enemy">
+    <section ref={host} className="panel relative mt-3 flex flex-col items-center gap-3 px-5 py-3 sm:flex-row sm:gap-5" aria-label="enemy">
       <div className="fx-stage-sprite relative shrink-0">
-        <EnemySprite id={e.id} kind={e.kind} hurt={hurt} charged={e.charged} dead={dead} className={e.kind === "minion" ? "" : "h-[150px] w-[150px] sm:h-auto sm:w-auto"} />
+        <EnemySprite id={e.id} kind={e.kind} hurt={hurt} charged={e.charged} dead={dead} className={e.kind === "minion" ? "h-[112px] w-[112px]" : "h-[132px] w-[132px]"} />
         <Burst element={burst.element} trigger={burst.n} />
         {layer}
       </div>
@@ -40,8 +40,8 @@ export default function EnemyPanel({ enemy: e, lang, hurt, dead, burst = NO_BURS
           <h2 className="font-display text-2xl font-medium"><Ruby text={enemyName(e, lang)} lang={lang} italic={L.italic} /></h2>
           <span className="text-sm text-vellum2">{e.gloss}{kindTag ? ` · ${kindTag}` : ""}</span>
         </div>
-        <p lang={L.speech} className={`mt-0.5 font-display text-sm text-vellum2 ${L.italic ? "italic" : ""}`}>{withPinyin(enemyTaunt(e, lang), lang)}</p>
-        <HpBar value={e.hpNow} max={e.hp} color="blood" className="mt-3" />
+        <p lang={L.speech} className={`mt-0.5 font-display text-xs text-vellum2 ${L.italic ? "italic" : ""}`}>{withPinyin(enemyTaunt(e, lang), lang)}</p>
+        <HpBar value={e.hpNow} max={e.hp} color="blood" className="mt-2" />
         {e.statuses.length > 0 && (
           <div className="mt-2 flex flex-wrap justify-center gap-1.5 sm:justify-start">
             {e.statuses.map((s) => <StatusBadge key={s.id} id={s.id} stacks={s.stacks} turns={s.turns} />)}
@@ -50,9 +50,9 @@ export default function EnemyPanel({ enemy: e, lang, hurt, dead, burst = NO_BURS
         <IntentBadge
           intent={intent.intent} amount={intent.amount} charged={e.charged} shield={shield} armor={armor}
           note={intent.note} title={intentName(intent.intent, lang)} lang={lang} pulseKey={`${e.id}:${e.step}:${e.charged ? "c" : ""}`}
-          className="mt-3"
+          className="mt-2"
         />
-        <p className="mt-2 text-xs text-vellum2">
+        <p className="mt-1.5 text-xs text-vellum2">
           Weak to <Sigil element={e.weak} size={13} /> <Ruby text={elementLabel(e.weak, lang)} lang={lang} className={EL_TEXT[e.weak]} />
           {e.resist && <> · resists <Sigil element={e.resist} size={13} /> <Ruby text={elementLabel(e.resist, lang)} lang={lang} className={EL_TEXT[e.resist]} /></>}
           {e.minTier && e.minTier > 1 ? <> · shrugs off spells below tier {e.minTier}</> : null}

@@ -239,3 +239,9 @@ main { position: relative; z-index: 1; }
 @media (max-width: 640px) {
   .title-word { font-size: calc(var(--size, 1) * .7rem); }
 }
+
+/* The battle fits one screen. Its own spacing is already tight; on short laptop viewports the whole
+   screen is zoomed down a notch so the hand's row never pushes the log below the fold. */
+@media (max-height: 880px) { .battle-fit { zoom: .92; } }
+@media (max-height: 790px) { .battle-fit { zoom: .84; } }
+@media (max-height: 700px) { .battle-fit { zoom: .76; } }

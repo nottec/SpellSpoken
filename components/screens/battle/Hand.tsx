@@ -20,7 +20,7 @@ export default function Hand({ run, lang, selected, onSelect, locked, onEndTurn,
   const L = LANGS[lang];
   const hand = handCards(run);
   return (
-    <section className="mt-6" aria-label="your hand">
+    <section className="mt-4" aria-label="your hand">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h3 className="font-display text-lg">Your hand</h3>
@@ -31,7 +31,8 @@ export default function Hand({ run, lang, selected, onSelect, locked, onEndTurn,
           End turn <kbd className="rounded border border-white/15 px-1 font-sans text-[10px] leading-4 text-vellum2">E</kbd>
         </button>
       </div>
-      <div className="mt-3 flex flex-wrap justify-center gap-3 sm:justify-start">
+      {/* one row of five on a laptop so the battle fits the screen; two or three per row below md */}
+      <div className="mt-2 grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
         {hand.map(({ card, spell }, i) => (
           <SpellCard
             key={card.uid}

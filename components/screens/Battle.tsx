@@ -381,7 +381,7 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
   if (!enemy) return <div className="panel mt-6 p-6 text-center text-vellum2">No enemy here.</div>;
 
   return (
-    <div className="pb-24 animate-reveal">
+    <div className="battle-fit pb-24 animate-reveal md:pb-4">
       <TopStrip run={view} lang={lang} />
 
       <EnemyPanel enemy={enemy} lang={lang} hurt={hurt} dead={dead} host={enemyFx.host} layer={enemyFx.layer} shield={view.shield} armor={stacksOf(view.statuses, "armor")} />
@@ -398,10 +398,10 @@ function BattleInner({ run, lang, lexicon, words, useTyping, onUseTyping, onRun,
 
       <Hand run={run} lang={lang} selected={sel?.card.uid ?? null} onSelect={select} locked={mic.listening} onEndTurn={() => void endTurnNow()} endDisabled={busy || mic.listening || run.phase !== "battle"} />
 
-      <LogPanel lines={run.log} max={4} lang={lang} className="mt-4" />
+      <LogPanel lines={run.log} max={2} lang={lang} className="mt-3" />
 
       {showHint && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-ember/10 px-4 py-2 text-xs text-vellum ring-1 ring-ember/20" role="note">
+        <div className="fixed bottom-4 left-1/2 z-30 flex w-[min(92vw,40rem)] -translate-x-1/2 items-center justify-between gap-3 rounded-xl bg-dusk/95 px-4 py-2 text-xs text-vellum shadow-lg shadow-black/40 ring-1 ring-ember/30 backdrop-blur" role="note">
           <p>You have {run.maxBreath} breath a turn. Cards cost breath; say the words to cast. End your turn when you&apos;re done.</p>
           <button type="button" onClick={() => setHintGone(true)} className="shrink-0 rounded px-1 text-vellum2 hover:text-vellum focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/70" aria-label="Dismiss hint">✕</button>
         </div>

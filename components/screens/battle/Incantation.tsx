@@ -50,28 +50,30 @@ export default function Incantation(p: IncantationProps) {
   const ready = !!card && !!spell && !!phrase;
 
   return (
-    <section ref={p.host} className="relative mt-6 min-h-[240px] text-center" aria-label="the incantation">
+    <section ref={p.host} className="relative mt-3 text-center" aria-label="the incantation">
       {ready && card && spell && phrase ? (
         <div key={`${card.uid}:${phrase.id}`} className="animate-reveal">
-          <p className="text-xs text-vellum2">
-            casting <Ruby text={cardName(card, lang)} lang={lang} italic={L.italic} className="font-display text-sm text-vellum" />
-            {run.cursed && <span className="text-shadow"> · cursed, one level harder</span>}
-            {run.grudges.includes(phrase.id) && <span className="text-blood"> · a word that beat you</span>}
-            {isWordMastered(words, phrase.id) && <span className="text-light"> · mastered</span>}
-          </p>
-          {/* The phrase is upright and tagged, so it never reads like the card's italic name. */}
-          <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-ember/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.22em] text-ember ring-1 ring-ember/30">
-            <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden><rect x="5.5" y="1.5" width="5" height="8" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2M5.5 14.5h5" /></svg>
-            say this to cast
-          </p>
+          {/* One row: the card being cast, then the tag. The phrase below is upright, so it never reads like the card's italic name. */}
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-vellum2">
+            <p>
+              casting <Ruby text={cardName(card, lang)} lang={lang} italic={L.italic} className="font-display text-sm text-vellum" />
+              {run.cursed && <span className="text-shadow"> · cursed, one level harder</span>}
+              {run.grudges.includes(phrase.id) && <span className="text-blood"> · a word that beat you</span>}
+              {isWordMastered(words, phrase.id) && <span className="text-light"> · mastered</span>}
+            </p>
+            <p className="inline-flex items-center gap-1.5 rounded-full bg-ember/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.22em] text-ember ring-1 ring-ember/30">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden><rect x="5.5" y="1.5" width="5" height="8" rx="2.5" /><path d="M3 7.5a5 5 0 0 0 10 0M8 12.5v2M5.5 14.5h5" /></svg>
+              say this to cast
+            </p>
+          </div>
           <h1
             lang={L.speech}
-            className={`mt-1 text-balance font-display text-5xl font-normal leading-tight tracking-tight md:text-6xl ${listening ? "animate-breathe text-ember" : "text-vellum"}`}
+            className={`mt-1 text-balance font-display text-4xl font-normal leading-tight tracking-tight md:text-5xl ${listening ? "animate-breathe text-ember" : "text-vellum"}`}
           >
             {phrase.text}
           </h1>
-          {phrase.reading && <p className="mt-1 font-display text-xl text-ember/90">{phrase.reading}</p>}
-          <p className="mt-2 text-sm text-vellum2">“{phrase.en}”{phrase.focus ? ` · watch the ${phrase.focus}` : ""}</p>
+          {phrase.reading && <p className="mt-0.5 font-display text-lg text-ember/90">{phrase.reading}</p>}
+          <p className="mt-1 text-sm text-vellum2">“{phrase.en}”{phrase.focus ? ` · watch the ${phrase.focus}` : ""}</p>
           {!useTyping && L.hasReading && syllables(phrase.text).length === 1 && (
             <p className="mt-1 text-xs text-vellum2/80">
               one syllable: Chrome hears it best said twice, <span lang={L.speech} className="text-vellum">{phrase.text} {phrase.text}</span>, which scores as once
@@ -83,7 +85,7 @@ export default function Incantation(p: IncantationProps) {
             </p>
           )}
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-3">
             {useTyping ? (
               <form onSubmit={(e) => { e.preventDefault(); p.onCast(); }} className="flex w-full max-w-md gap-2">
                 <input
@@ -116,7 +118,7 @@ export default function Incantation(p: IncantationProps) {
             <VuMeter level={level} active={listening} className={listening ? "" : "invisible"} />
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-vellum2">
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-vellum2">
             <label className="inline-flex cursor-pointer items-center gap-2">
               <input type="checkbox" className="accent-ember" checked={useTyping} onChange={(e) => p.onUseTyping(e.target.checked)} disabled={listening} /> type instead of speak
             </label>
@@ -124,19 +126,19 @@ export default function Incantation(p: IncantationProps) {
           </div>
 
           {notice && (
-            <p className="mt-3 text-sm text-ember" role="status">
+            <p className="mt-2 text-sm text-ember" role="status">
               {notice.text}
               {notice.offerTyping && <button type="button" className="ml-2 underline decoration-ember/60 underline-offset-2 hover:text-vellum" onClick={() => p.onUseTyping(true)}>Type instead</button>}
             </p>
           )}
         </div>
       ) : (
-        <p className={`pt-16 font-display text-2xl text-vellum2 ${L.italic ? "italic" : ""}`}>
+        <p className={`py-10 font-display text-2xl text-vellum2 ${L.italic ? "italic" : ""}`}>
           {card ? "The grimoire turns its page…" : run.hand.length ? "Nothing left to cast — end your turn." : "Choose a card from your hand."}
         </p>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-vellum2">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-vellum2">
         <span className="inline-flex items-center gap-2">
           Resonance
           <span className="inline-flex gap-1" role="meter" aria-valuenow={Math.min(run.resonance, at)} aria-valuemin={0} aria-valuemax={at} aria-label={`${Math.min(run.resonance, at)} of ${at} resonance`}>
