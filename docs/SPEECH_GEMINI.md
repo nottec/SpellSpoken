@@ -223,6 +223,9 @@ on any failure they answer with template text plus `why`.
   45 → ×0.64 (a grudge), under 16 → a backfire. `rating: null` (no key, timeout, unusable answer)
   leaves the transcript score. The cast waits for the judge (`JUDGE_TIMEOUT_MS` 9 s) and the verdict
   shows "accent N/100". The judge always calls Gemini, even above 0.97.
+- Mandarin: a judge that knows the target echoes its tones back as "heard", so the route also makes a
+  blind call (concurrently) that transcribes the pinyin tones without the target; a tone that differs
+  from the target caps the rating at 60 (one syllable) or 45 (more) before the rating is returned.
 - Without `judge`: `score ≥ 0.97` → template praise, **no Gemini request** (the client may skip the call too).
 - Pass `cap.audio` straight through; `null` makes a transcript-only request. The clip runs until the
   capture settles, so it includes anything said after an early accept.
